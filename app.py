@@ -173,7 +173,7 @@ def import_from_google_sheets(sheet_url):
             return None, "URL invalide"
         
         sheet_id = match.group(1)
-        csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet=Bien-être"
+        csv_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet=Bien-%C3%AAtre"
         
         df_raw = pd.read_csv(csv_url, header=None)
         return process_imported_data(df_raw)
