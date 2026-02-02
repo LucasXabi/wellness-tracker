@@ -662,12 +662,12 @@ def page_dashboard():
     
     # ===== MOYENNE ÉQUIPE =====
     if team:
-        metrics_html = ''.join([
-            f'<div style="text-align:center;min-width:60px;"><div style="font-size:24px;">{m["icon"]}</div>'
-            f'<div style="font-size:20px;font-weight:bold;color:white;">{team[m["key"]]:.1f if team.get(m["key"]) else "-"}</div>'
-            f'<div style="font-size:10px;color:#9ca3af;">{m["label"]}</div></div>'
-            for m in METRICS
-        ])
+        def format_metric(m):
+            val = team.get(m["key"])
+            val_str = f"{val:.1f}" if val is not None else "-"
+            return f'<div style="text-align:center;min-width:60px;"><div style="font-size:24px;">{m["icon"]}</div><div style="font-size:20px;font-weight:bold;color:white;">{val_str}</div><div style="font-size:10px;color:#9ca3af;">{m["label"]}</div></div>'
+        
+        metrics_html = ''.join([format_metric(m) for m in METRICS])
         
         st.markdown(f"""
         <div class="team-avg-card">
