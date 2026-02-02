@@ -668,13 +668,16 @@ def page_dashboard():
             return f'<div style="text-align:center;min-width:60px;"><div style="font-size:24px;">{m["icon"]}</div><div style="font-size:20px;font-weight:bold;color:white;">{val_str}</div><div style="font-size:10px;color:#9ca3af;">{m["label"]}</div></div>'
         
         metrics_html = ''.join([format_metric(m) for m in METRICS])
+        global_val = team.get('global')
+        global_str = f"{global_val:.2f}" if global_val is not None else "-"
+        count_val = team.get('count', 0)
         
         st.markdown(f"""
         <div class="team-avg-card">
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:1rem;">
                 <div>
-                    <div style="color:#6ee7b7;font-size:14px;font-weight:500;">⚡ MOYENNE ÉQUIPE ({team['count']} joueurs)</div>
-                    <div style="font-size:48px;font-weight:bold;color:white;">{team['global']:.2f if team.get('global') else '-'}<span style="font-size:24px;color:#9ca3af;">/5</span></div>
+                    <div style="color:#6ee7b7;font-size:14px;font-weight:500;">⚡ MOYENNE ÉQUIPE ({count_val} joueurs)</div>
+                    <div style="font-size:48px;font-weight:bold;color:white;">{global_str}<span style="font-size:24px;color:#9ca3af;">/5</span></div>
                 </div>
                 <div style="display:flex;gap:24px;flex-wrap:wrap;">{metrics_html}</div>
             </div>
