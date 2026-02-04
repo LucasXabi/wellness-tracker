@@ -1,6 +1,6 @@
 """
 🏉 Rugby Wellness Tracker - Version Ultra Premium
-Application Streamlit avec design moderne et fonctionnalités complètes
+Application Streamlit complète avec design moderne et fonctionnalités avancées
 """
 
 import streamlit as st
@@ -30,7 +30,7 @@ st.markdown("""
         max-width: 1400px;
     }
     
-    /* Cards premium */
+    /* Cards premium avec glassmorphism */
     .premium-card {
         background: linear-gradient(145deg, #1e293b, #0f172a);
         border: 1px solid rgba(99, 102, 241, 0.2);
@@ -38,6 +38,12 @@ st.markdown("""
         padding: 1.5rem;
         margin-bottom: 1rem;
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+        transition: all 0.3s ease;
+    }
+    
+    .premium-card:hover {
+        border-color: rgba(99, 102, 241, 0.4);
+        box-shadow: 0 8px 30px rgba(0, 0, 0, 0.4);
     }
     
     .glass-card {
@@ -46,9 +52,15 @@ st.markdown("""
         border: 1px solid rgba(148, 163, 184, 0.1);
         border-radius: 12px;
         padding: 1rem;
+        transition: all 0.2s ease;
     }
     
-    /* Team average card */
+    .glass-card:hover {
+        background: rgba(30, 41, 59, 0.95);
+        border-color: rgba(148, 163, 184, 0.2);
+    }
+    
+    /* Team average card - Hero section */
     .team-avg-card {
         background: linear-gradient(135deg, #059669 0%, #0d9488 50%, #0891b2 100%);
         padding: 2rem;
@@ -67,28 +79,42 @@ st.markdown("""
         width: 100%;
         height: 100%;
         background: radial-gradient(circle, rgba(255,255,255,0.1) 0%, transparent 70%);
+        pointer-events: none;
     }
     
-    /* Metric badges */
+    .team-avg-card::after {
+        content: '';
+        position: absolute;
+        bottom: -30%;
+        left: -30%;
+        width: 60%;
+        height: 60%;
+        background: radial-gradient(circle, rgba(255,255,255,0.05) 0%, transparent 70%);
+        pointer-events: none;
+    }
+    
+    /* Metric badges améliorés */
     .metric-badge {
         display: inline-flex;
         align-items: center;
         justify-content: center;
-        width: 36px;
-        height: 36px;
-        border-radius: 8px;
+        width: 38px;
+        height: 38px;
+        border-radius: 10px;
         font-size: 14px;
         font-weight: 700;
         color: white;
         margin: 2px;
-        transition: transform 0.2s;
+        transition: all 0.2s ease;
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
     }
     
     .metric-badge:hover {
-        transform: scale(1.1);
+        transform: scale(1.15) translateY(-2px);
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
     }
     
-    /* Alert cards */
+    /* Alert cards avec animations */
     .alert-card {
         background: linear-gradient(135deg, rgba(239, 68, 68, 0.15), rgba(239, 68, 68, 0.05));
         border: 1px solid rgba(239, 68, 68, 0.3);
@@ -96,12 +122,13 @@ st.markdown("""
         padding: 12px 16px;
         border-radius: 8px;
         margin-bottom: 8px;
-        transition: all 0.2s;
+        transition: all 0.2s ease;
     }
     
     .alert-card:hover {
         transform: translateX(4px);
         box-shadow: 0 4px 12px rgba(239, 68, 68, 0.2);
+        background: linear-gradient(135deg, rgba(239, 68, 68, 0.2), rgba(239, 68, 68, 0.1));
     }
     
     .alert-card.warning {
@@ -110,41 +137,70 @@ st.markdown("""
         border-left-color: #f59e0b;
     }
     
-    /* Player row */
+    .alert-card.warning:hover {
+        box-shadow: 0 4px 12px rgba(245, 158, 11, 0.2);
+    }
+    
+    /* Player row avec effets */
     .player-row {
         background: rgba(30, 41, 59, 0.5);
         border: 1px solid rgba(71, 85, 105, 0.3);
         border-radius: 12px;
         padding: 12px 16px;
         margin-bottom: 8px;
-        transition: all 0.2s;
+        transition: all 0.25s ease;
         cursor: pointer;
     }
     
     .player-row:hover {
-        background: rgba(51, 65, 85, 0.7);
+        background: rgba(51, 65, 85, 0.8);
         border-color: rgba(99, 102, 241, 0.5);
-        transform: translateY(-2px);
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.2);
+        transform: translateY(-3px);
+        box-shadow: 0 8px 20px rgba(0, 0, 0, 0.25);
     }
     
-    /* Status badges */
+    .player-row.has-alert {
+        border-left: 3px solid #ef4444;
+    }
+    
+    /* Status badges premium */
     .status-badge {
         display: inline-block;
-        padding: 4px 12px;
+        padding: 5px 14px;
         border-radius: 20px;
         font-size: 11px;
         font-weight: 600;
         text-transform: uppercase;
         letter-spacing: 0.5px;
+        transition: all 0.2s ease;
     }
     
-    .status-apte { background: rgba(16, 185, 129, 0.2); color: #34d399; }
-    .status-blesse { background: rgba(239, 68, 68, 0.2); color: #f87171; }
-    .status-rehab { background: rgba(245, 158, 11, 0.2); color: #fbbf24; }
-    .status-reath { background: rgba(59, 130, 246, 0.2); color: #60a5fa; }
+    .status-badge:hover {
+        transform: scale(1.05);
+    }
     
-    /* Sidebar */
+    .status-apte { 
+        background: linear-gradient(135deg, rgba(16, 185, 129, 0.3), rgba(16, 185, 129, 0.1)); 
+        color: #34d399;
+        border: 1px solid rgba(16, 185, 129, 0.3);
+    }
+    .status-blesse { 
+        background: linear-gradient(135deg, rgba(239, 68, 68, 0.3), rgba(239, 68, 68, 0.1)); 
+        color: #f87171;
+        border: 1px solid rgba(239, 68, 68, 0.3);
+    }
+    .status-rehab { 
+        background: linear-gradient(135deg, rgba(245, 158, 11, 0.3), rgba(245, 158, 11, 0.1)); 
+        color: #fbbf24;
+        border: 1px solid rgba(245, 158, 11, 0.3);
+    }
+    .status-reath { 
+        background: linear-gradient(135deg, rgba(59, 130, 246, 0.3), rgba(59, 130, 246, 0.1)); 
+        color: #60a5fa;
+        border: 1px solid rgba(59, 130, 246, 0.3);
+    }
+    
+    /* Sidebar améliorée */
     [data-testid="stSidebar"] {
         background: linear-gradient(180deg, #0f172a 0%, #1e293b 100%);
     }
@@ -154,14 +210,19 @@ st.markdown("""
         padding: 12px 16px;
         border-radius: 8px;
         margin-bottom: 4px;
-        transition: all 0.2s;
+        transition: all 0.2s ease;
     }
     
-    /* Buttons */
+    [data-testid="stSidebar"] .stRadio > label:hover {
+        background: rgba(99, 102, 241, 0.1);
+    }
+    
+    /* Buttons premium */
     .stButton > button {
-        border-radius: 8px;
+        border-radius: 10px;
         font-weight: 600;
-        transition: all 0.2s;
+        transition: all 0.2s ease;
+        border: none;
     }
     
     .stButton > button:hover {
@@ -169,7 +230,15 @@ st.markdown("""
         box-shadow: 0 4px 12px rgba(99, 102, 241, 0.3);
     }
     
-    /* Data display */
+    .stButton > button[kind="primary"] {
+        background: linear-gradient(135deg, #6366f1, #4f46e5);
+    }
+    
+    .stButton > button[kind="primary"]:hover {
+        background: linear-gradient(135deg, #818cf8, #6366f1);
+    }
+    
+    /* Big numbers */
     .big-number {
         font-size: 3.5rem;
         font-weight: 800;
@@ -179,7 +248,7 @@ st.markdown("""
         line-height: 1;
     }
     
-    /* Calendar */
+    /* Calendar days */
     .calendar-day {
         width: 100%;
         aspect-ratio: 1;
@@ -188,12 +257,77 @@ st.markdown("""
         flex-direction: column;
         align-items: center;
         justify-content: center;
-        font-size: 12px;
-        transition: transform 0.2s;
+        font-size: 11px;
+        transition: all 0.2s ease;
+        cursor: pointer;
     }
     
     .calendar-day:hover {
-        transform: scale(1.05);
+        transform: scale(1.1);
+        box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+    
+    /* Avatar avec gradient */
+    .player-avatar {
+        width: 44px;
+        height: 44px;
+        border-radius: 12px;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        color: white;
+        font-size: 18px;
+        transition: all 0.2s ease;
+    }
+    
+    .player-avatar:hover {
+        transform: scale(1.1);
+    }
+    
+    .avatar-gradient-1 { background: linear-gradient(135deg, #10b981, #059669); }
+    .avatar-gradient-2 { background: linear-gradient(135deg, #3b82f6, #1d4ed8); }
+    .avatar-gradient-3 { background: linear-gradient(135deg, #8b5cf6, #6d28d9); }
+    .avatar-gradient-4 { background: linear-gradient(135deg, #f59e0b, #d97706); }
+    .avatar-gradient-5 { background: linear-gradient(135deg, #ef4444, #dc2626); }
+    
+    /* Progress bar custom */
+    .custom-progress {
+        height: 8px;
+        background: rgba(71, 85, 105, 0.3);
+        border-radius: 4px;
+        overflow: hidden;
+    }
+    
+    .custom-progress-fill {
+        height: 100%;
+        border-radius: 4px;
+        transition: width 0.5s ease;
+    }
+    
+    /* Stat card */
+    .stat-card {
+        background: rgba(30, 41, 59, 0.6);
+        border: 1px solid rgba(71, 85, 105, 0.2);
+        border-radius: 12px;
+        padding: 16px;
+        text-align: center;
+        transition: all 0.2s ease;
+    }
+    
+    .stat-card:hover {
+        background: rgba(30, 41, 59, 0.9);
+        transform: translateY(-2px);
+    }
+    
+    /* Tabs styling */
+    .stTabs [data-baseweb="tab-list"] {
+        gap: 8px;
+    }
+    
+    .stTabs [data-baseweb="tab"] {
+        border-radius: 8px;
+        padding: 8px 16px;
     }
     
     /* Hide streamlit branding */
@@ -203,23 +337,34 @@ st.markdown("""
     /* Animations */
     @keyframes pulse {
         0%, 100% { opacity: 1; }
-        50% { opacity: 0.5; }
+        50% { opacity: 0.6; }
     }
     
-    .pulse {
-        animation: pulse 2s infinite;
+    @keyframes slideIn {
+        from { opacity: 0; transform: translateY(10px); }
+        to { opacity: 1; transform: translateY(0); }
     }
     
-    /* Table styling */
-    .dataframe {
-        border-radius: 12px !important;
-        overflow: hidden;
+    .pulse { animation: pulse 2s infinite; }
+    .slide-in { animation: slideIn 0.3s ease; }
+    
+    /* Scrollbar custom */
+    ::-webkit-scrollbar {
+        width: 8px;
+        height: 8px;
     }
     
-    /* Progress bars */
-    .stProgress > div > div {
-        background: linear-gradient(90deg, #10b981, #059669);
-        border-radius: 10px;
+    ::-webkit-scrollbar-track {
+        background: rgba(15, 23, 42, 0.5);
+    }
+    
+    ::-webkit-scrollbar-thumb {
+        background: rgba(99, 102, 241, 0.5);
+        border-radius: 4px;
+    }
+    
+    ::-webkit-scrollbar-thumb:hover {
+        background: rgba(99, 102, 241, 0.7);
     }
 </style>
 """, unsafe_allow_html=True)
@@ -277,23 +422,13 @@ INJURY_ZONES = {
 CIRCUMSTANCES = ['Match', 'Entraînement', 'Musculation', 'Hors sport', 'Autre']
 STATUSES = ['Apte', 'Blessé', 'Réhabilitation', 'Réathlétisation']
 
-# Mapping flexible pour les colonnes
-COLUMN_MAPPINGS = {
-    'name': ['joueur', 'nom', 'name', 'player', 'prenom', 'prénom'],
-    'weight': ['poids', 'weight', 'kg', 'masse'],
-    'sleep': ['sommeil', 'sleep', 'dormir', 'nuit'],
-    'mentalLoad': ['charge mentale', 'mental', 'charge', 'stress', 'mentalload'],
-    'motivation': ['motivation', 'motiv', 'envie'],
-    'hdcState': ['hdc', 'haut du corps', 'hautducorps', 'upper'],
-    'bdcState': ['bdc', 'bas du corps', 'basducorps', 'lower'],
-    'remark': ['remarque', 'commentaire', 'note', 'comment', 'remark', 'observation']
-}
-
 FRENCH_MONTHS = {
     'janvier': 1, 'février': 2, 'fevrier': 2, 'mars': 3, 'avril': 4,
     'mai': 5, 'juin': 6, 'juillet': 7, 'août': 8, 'aout': 8,
     'septembre': 9, 'octobre': 10, 'novembre': 11, 'décembre': 12, 'decembre': 12
 }
+
+FRENCH_DAYS = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche']
 
 DEFAULT_SETTINGS = {
     'lowValueThreshold': 2,
@@ -322,6 +457,7 @@ init_session()
 
 # ==================== UTILITAIRES ====================
 def get_player_group(position):
+    """Retourne le groupe (Avants/Trois-quarts) pour une position"""
     for group_name, lines in RUGBY_POSITIONS.items():
         for line_positions in lines.values():
             if position in line_positions:
@@ -329,6 +465,7 @@ def get_player_group(position):
     return 'Avants'
 
 def get_player_line(position):
+    """Retourne la ligne (1ère ligne, Demis, etc.) pour une position"""
     for lines in RUGBY_POSITIONS.values():
         for line_name, line_positions in lines.items():
             if position in line_positions:
@@ -336,28 +473,31 @@ def get_player_line(position):
     return '1ère ligne'
 
 def format_date(date_str, fmt='short'):
+    """Formate une date en français"""
     if not date_str:
         return '-'
     try:
         d = datetime.strptime(date_str, '%Y-%m-%d')
+        months = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 
+                  'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
         if fmt == 'short':
-            return d.strftime('%d %b').replace('Jan', 'janv').replace('Feb', 'fév').replace('Mar', 'mars').replace('Apr', 'avr').replace('May', 'mai').replace('Jun', 'juin').replace('Jul', 'juil').replace('Aug', 'août').replace('Sep', 'sept').replace('Oct', 'oct').replace('Nov', 'nov').replace('Dec', 'déc')
+            return f"{d.day} {months[d.month-1][:3]}"
         elif fmt == 'full':
-            days = ['lundi', 'mardi', 'mercredi', 'jeudi', 'vendredi', 'samedi', 'dimanche']
-            months = ['janvier', 'février', 'mars', 'avril', 'mai', 'juin', 'juillet', 'août', 'septembre', 'octobre', 'novembre', 'décembre']
-            return f"{days[d.weekday()]} {d.day} {months[d.month-1]} {d.year}"
+            return f"{FRENCH_DAYS[d.weekday()]} {d.day} {months[d.month-1]} {d.year}"
         else:
             return d.strftime('%d/%m/%Y')
     except:
         return date_str
 
 def get_player_average(player_data):
+    """Calcule la moyenne des métriques d'un joueur"""
     if not player_data:
         return None
     vals = [player_data.get(m['key']) for m in METRICS if player_data.get(m['key']) is not None]
     return sum(vals) / len(vals) if vals else None
 
-def get_team_avg(date_key, group=None, line=None):
+def get_team_avg(date_key, group=None, line=None, position=None):
+    """Calcule les moyennes de l'équipe avec filtres optionnels"""
     data = st.session_state.data.get(date_key, [])
     if not data:
         return None
@@ -370,6 +510,8 @@ def get_team_avg(date_key, group=None, line=None):
         if group and get_player_group(p['position']) != group:
             continue
         if line and get_player_line(p['position']) != line:
+            continue
+        if position and p['position'] != position:
             continue
         filtered.append(d)
     
@@ -388,6 +530,7 @@ def get_team_avg(date_key, group=None, line=None):
     return result
 
 def get_alerts(date_key):
+    """Génère les alertes pour une date donnée"""
     data = st.session_state.data.get(date_key, [])
     settings = st.session_state.settings
     alerts = []
@@ -397,6 +540,7 @@ def get_alerts(date_key):
         if not p:
             continue
         
+        # Alertes métriques basses
         for m in METRICS:
             val = d.get(m['key'])
             if val is not None and val <= settings['lowValueThreshold']:
@@ -409,20 +553,23 @@ def get_alerts(date_key):
                     'message': f"{m['label']} à {val}/5"
                 })
         
+        # Alerte poids
         if d.get('weight') and p.get('targetWeight'):
             diff = abs(d['weight'] - p['targetWeight'])
             if diff > settings['weightThreshold']:
+                sign = '+' if d['weight'] > p['targetWeight'] else '-'
                 alerts.append({
                     'player': d['name'],
                     'player_id': p['id'],
                     'type': 'weight',
                     'diff': round(d['weight'] - p['targetWeight'], 1),
-                    'message': f"Poids {d['weight']:.1f}kg (forme: {p['targetWeight']}kg)"
+                    'message': f"Poids {sign}{diff:.1f}kg vs forme"
                 })
     
     return alerts
 
 def get_availability_data():
+    """Retourne les données de disponibilité pour le pie chart"""
     counts = {}
     for p in st.session_state.players:
         status = p.get('status', 'Apte')
@@ -432,6 +579,7 @@ def get_availability_data():
     return [{'name': k, 'value': v, 'color': colors.get(k, '#6b7280')} for k, v in counts.items() if v > 0]
 
 def get_player_history(player_name, days=30):
+    """Récupère l'historique d'un joueur sur N jours"""
     dates = sorted(st.session_state.data.keys(), reverse=True)[:days]
     history = []
     for date in reversed(dates):
@@ -443,6 +591,7 @@ def get_player_history(player_name, days=30):
     return history
 
 def calculate_zscore(value, prev_values):
+    """Calcule le Z-Score d'une valeur par rapport à un historique"""
     if not prev_values or len(prev_values) < 3:
         return 0
     mean = sum(prev_values) / len(prev_values)
@@ -450,6 +599,7 @@ def calculate_zscore(value, prev_values):
     return (value - mean) / std if std > 0 else 0
 
 def get_color_for_value(val):
+    """Retourne la couleur selon la valeur (1-5)"""
     if val is None:
         return '#475569'
     if val <= 2:
@@ -458,32 +608,25 @@ def get_color_for_value(val):
         return '#f59e0b'
     return '#10b981'
 
-# ==================== IMPORT INTELLIGENT ====================
-def find_column_match(header, mappings):
-    """Trouve la correspondance de colonne de manière intelligente"""
-    header_clean = str(header).lower().strip()
-    header_clean = re.sub(r'[^a-zàâäéèêëïîôùûüç0-9]', '', header_clean)
-    
-    for key, patterns in mappings.items():
-        for pattern in patterns:
-            pattern_clean = re.sub(r'[^a-zàâäéèêëïîôùûüç0-9]', '', pattern.lower())
-            if pattern_clean in header_clean or header_clean in pattern_clean:
-                return key
-    return None
+def get_avatar_gradient(name):
+    """Retourne une classe de gradient basée sur le nom"""
+    idx = sum(ord(c) for c in name) % 5 + 1
+    return f"avatar-gradient-{idx}"
 
+# ==================== IMPORT ADAPTÉ À LA STRUCTURE EXACTE ====================
 def parse_date_french(text):
-    """Parse une date en français de manière flexible"""
+    """Parse une date en français - format: 'mardi 6 janvier 2026' ou '6 janvier 2026'"""
     text = str(text).lower().strip()
     
-    # Format: "6 janvier 2025" ou "06 janvier 2025"
-    match = re.search(r'(\d{1,2})\s*(janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre)\s*(\d{4})', text)
+    # Format: "mardi 6 janvier 2026" ou "6 janvier 2026"
+    match = re.search(r'(\d{1,2})\s+(janvier|février|fevrier|mars|avril|mai|juin|juillet|août|aout|septembre|octobre|novembre|décembre|decembre)\s+(\d{4})', text)
     if match:
         day = int(match.group(1))
         month = FRENCH_MONTHS.get(match.group(2), 1)
         year = int(match.group(3))
         return f"{year}-{month:02d}-{day:02d}"
     
-    # Format: "06/01/2025" ou "6/1/2025"
+    # Format: "06/01/2026"
     match = re.search(r'(\d{1,2})[/\-.](\d{1,2})[/\-.](\d{4})', text)
     if match:
         day = int(match.group(1))
@@ -491,109 +634,118 @@ def parse_date_french(text):
         year = int(match.group(3))
         return f"{year}-{month:02d}-{day:02d}"
     
-    # Format: "2025-01-06"
-    match = re.search(r'(\d{4})[/\-.](\d{1,2})[/\-.](\d{1,2})', text)
-    if match:
-        year = int(match.group(1))
-        month = int(match.group(2))
-        day = int(match.group(3))
-        return f"{year}-{month:02d}-{day:02d}"
-    
     return None
 
-def process_imported_data(df):
-    """Traite les données importées avec détection intelligente"""
+def process_imported_data(df, debug=False):
+    """
+    Traite les données importées depuis Google Sheets.
+    Structure attendue :
+    - Ligne avec la date (ex: "mardi 6 janvier 2026")
+    - Ligne d'en-têtes : Joueur, Poids, Sommeil, Charge mentale, Motivation, état général HDC, état général BDC, Moyenne, ..., Remarque
+    - Ligne EQUIPE (à ignorer)
+    - Données des joueurs
+    """
     try:
-        # Debug: afficher les premières lignes
-        st.write("**🔍 Analyse du fichier...**")
+        if debug:
+            st.write("### 🔍 Analyse du fichier")
+            st.write(f"**Dimensions:** {len(df)} lignes × {len(df.columns)} colonnes")
         
-        # Chercher la date dans toutes les cellules
+        # 1. Chercher la date dans les premières lignes
         date_found = None
-        header_row = None
-        
-        for i in range(min(15, len(df))):
-            row = df.iloc[i]
-            row_str = ' '.join([str(x) for x in row if pd.notna(x)])
-            
-            # Chercher une date
-            if not date_found:
-                parsed = parse_date_french(row_str)
-                if parsed:
-                    date_found = parsed
-                    st.success(f"📅 Date trouvée: {format_date(date_found, 'full')}")
-            
-            # Chercher la ligne d'en-tête - plus flexible
-            row_values = [str(x).lower().strip() for x in row if pd.notna(x)]
-            
-            # Vérifier si c'est une ligne d'en-tête
-            has_name_col = any(any(p in v for p in ['joueur', 'nom', 'name']) for v in row_values)
-            has_metric_col = any(any(p in v for p in ['poids', 'sommeil', 'motivation', 'hdc', 'bdc', 'charge']) for v in row_values)
-            
-            if has_name_col and has_metric_col:
-                header_row = i
-                st.success(f"📋 En-tête trouvé à la ligne {i + 1}")
+        for i in range(min(10, len(df))):
+            for j in range(len(df.columns)):
+                cell = df.iloc[i, j]
+                if pd.notna(cell):
+                    parsed = parse_date_french(str(cell))
+                    if parsed:
+                        date_found = parsed
+                        if debug:
+                            st.success(f"📅 Date trouvée ligne {i}: **{format_date(date_found, 'full')}**")
+                        break
+            if date_found:
                 break
         
         if not date_found:
             date_found = datetime.now().strftime('%Y-%m-%d')
-            st.warning(f"⚠️ Date non trouvée, utilisation de: {format_date(date_found, 'full')}")
+            if debug:
+                st.warning(f"⚠️ Date non trouvée, utilisation: {date_found}")
         
-        if header_row is None:
-            # Tentative de détection alternative
-            st.warning("⚠️ En-tête standard non trouvé, tentative de détection alternative...")
+        # 2. Chercher la ligne d'en-têtes (contient "Joueur" et "Poids" ou "Sommeil")
+        header_row = None
+        col_indices = {}
+        
+        for i in range(min(15, len(df))):
+            row = df.iloc[i]
+            row_str = ' '.join([str(x).lower() for x in row if pd.notna(x)])
             
-            # Chercher la première ligne avec plusieurs textes non vides
-            for i in range(min(15, len(df))):
-                row = df.iloc[i]
-                non_empty = [str(x).strip() for x in row if pd.notna(x) and str(x).strip()]
-                if len(non_empty) >= 3:
-                    # Vérifier si ça ressemble à des en-têtes
-                    all_text = all(not str(x).replace('.', '').replace(',', '').isdigit() for x in non_empty[:5])
-                    if all_text:
-                        header_row = i
-                        st.info(f"📋 En-tête potentiel détecté à la ligne {i + 1}")
-                        break
+            # Chercher si cette ligne contient les en-têtes
+            has_joueur = any('joueur' in str(x).lower() for x in row if pd.notna(x))
+            has_poids = any('poids' in str(x).lower() for x in row if pd.notna(x))
+            has_sommeil = any('sommeil' in str(x).lower() for x in row if pd.notna(x))
+            
+            if has_joueur and (has_poids or has_sommeil):
+                header_row = i
+                if debug:
+                    st.success(f"📋 En-tête trouvé ligne {i}")
+                
+                # Mapper les colonnes
+                for j, cell in enumerate(row):
+                    if pd.notna(cell):
+                        cell_lower = str(cell).lower().strip()
+                        if 'joueur' in cell_lower or cell_lower == 'nom':
+                            col_indices['name'] = j
+                        elif 'poids' in cell_lower:
+                            col_indices['weight'] = j
+                        elif 'sommeil' in cell_lower:
+                            col_indices['sleep'] = j
+                        elif 'charge' in cell_lower and 'mental' in cell_lower:
+                            col_indices['mentalLoad'] = j
+                        elif 'motivation' in cell_lower:
+                            col_indices['motivation'] = j
+                        elif 'hdc' in cell_lower or ('état' in cell_lower and 'hdc' in row_str):
+                            col_indices['hdcState'] = j
+                        elif 'bdc' in cell_lower or ('état' in cell_lower and 'bdc' in row_str):
+                            col_indices['bdcState'] = j
+                        elif 'remarque' in cell_lower or 'commentaire' in cell_lower:
+                            col_indices['remark'] = j
+                break
         
         if header_row is None:
-            return {'success': False, 'error': "Impossible de trouver la ligne d'en-tête. Vérifiez que votre fichier contient des colonnes comme 'Joueur', 'Poids', 'Sommeil', etc."}
+            return {'success': False, 'error': "Ligne d'en-tête non trouvée. Assurez-vous que le fichier contient une ligne avec 'Joueur', 'Poids', 'Sommeil', etc."}
         
-        # Mapper les colonnes
-        headers = df.iloc[header_row]
-        col_map = {}
+        if 'name' not in col_indices:
+            return {'success': False, 'error': "Colonne 'Joueur' non trouvée dans les en-têtes."}
         
-        st.write("**📊 Colonnes détectées:**")
-        for idx, h in enumerate(headers):
-            if pd.isna(h):
-                continue
-            matched_key = find_column_match(str(h), COLUMN_MAPPINGS)
-            if matched_key:
-                col_map[matched_key] = idx
-                st.write(f"  ✓ `{h}` → {matched_key}")
+        if debug:
+            st.write(f"**Colonnes mappées:** {col_indices}")
         
-        if 'name' not in col_map:
-            return {'success': False, 'error': "Colonne 'Joueur' ou 'Nom' non trouvée dans les en-têtes détectés."}
-        
-        # Extraire les données
-        data_rows = df.iloc[header_row + 1:]
+        # 3. Extraire les données (lignes après l'en-tête)
         entries = []
         players_created = 0
         
-        for _, row in data_rows.iterrows():
-            name_idx = col_map.get('name')
-            if name_idx is None:
+        for row_idx in range(header_row + 1, len(df)):
+            row = df.iloc[row_idx]
+            
+            # Récupérer le nom
+            name_col = col_indices.get('name')
+            if name_col is None or name_col >= len(row):
                 continue
             
-            name = row.iloc[name_idx] if name_idx < len(row) else None
-            if pd.isna(name) or not str(name).strip():
+            name = row.iloc[name_col]
+            if pd.isna(name):
                 continue
             
             name = str(name).strip()
             
-            # Ignorer les lignes qui ressemblent à des en-têtes ou totaux
-            if any(x in name.lower() for x in ['total', 'moyenne', 'joueur', 'nom', 'average']):
+            # Ignorer lignes vides, EQUIPE, ou non-joueurs
+            if not name or len(name) < 2:
+                continue
+            if name.upper() in ['EQUIPE', 'TOTAL', 'MOYENNE', 'AVERAGE']:
+                continue
+            if name.lower() in ['joueur', 'nom', 'nan', 'none']:
                 continue
             
-            # Créer joueur si n'existe pas
+            # Créer le joueur s'il n'existe pas
             if not any(p['name'] == name for p in st.session_state.players):
                 st.session_state.players.append({
                     'id': f"p_{len(st.session_state.players) + 1}_{datetime.now().timestamp():.0f}",
@@ -606,29 +758,39 @@ def process_imported_data(df):
             
             entry = {'name': name}
             
-            # Extraire valeurs
-            for key, idx in col_map.items():
-                if key == 'name' or idx is None or idx >= len(row):
-                    continue
-                
-                val = row.iloc[idx]
-                
-                if key == 'remark':
-                    entry[key] = str(val).strip() if pd.notna(val) and str(val).strip() not in ['nan', 'None', ''] else ''
-                else:
+            # Poids
+            if 'weight' in col_indices:
+                val = row.iloc[col_indices['weight']]
+                if pd.notna(val):
+                    try:
+                        num = float(str(val).replace(',', '.'))
+                        if 40 <= num <= 200:
+                            entry['weight'] = num
+                    except:
+                        pass
+            
+            # Métriques (1-5)
+            for metric_key in ['sleep', 'mentalLoad', 'motivation', 'hdcState', 'bdcState']:
+                if metric_key in col_indices:
+                    val = row.iloc[col_indices[metric_key]]
                     if pd.notna(val):
                         try:
-                            # Nettoyer et convertir
-                            val_str = str(val).replace(',', '.').replace(' ', '')
-                            num = float(val_str)
-                            if 0 <= num <= 200:  # Validation basique
-                                entry[key] = num
+                            num = float(str(val).replace(',', '.'))
+                            if 1 <= num <= 5:
+                                entry[metric_key] = num
                         except:
                             pass
             
+            # Remarque
+            if 'remark' in col_indices:
+                val = row.iloc[col_indices['remark']]
+                if pd.notna(val):
+                    remark = str(val).strip()
+                    if remark and remark.lower() not in ['nan', 'none', '']:
+                        entry['remark'] = remark
+            
             entries.append(entry)
         
-        # Sauvegarder
         if entries:
             st.session_state.data[date_found] = entries
             return {
@@ -639,7 +801,7 @@ def process_imported_data(df):
                 'new_players': players_created
             }
         else:
-            return {'success': False, 'error': "Aucune donnée valide trouvée dans le fichier."}
+            return {'success': False, 'error': "Aucune donnée de joueur trouvée après l'en-tête."}
         
     except Exception as e:
         return {'success': False, 'error': str(e)}
@@ -647,6 +809,7 @@ def process_imported_data(df):
 
 # ==================== GRAPHIQUES ====================
 def create_radar_chart(data1, data2, label1, label2):
+    """Crée un graphique radar comparatif"""
     categories = [m['label'] for m in METRICS]
     
     fig = go.Figure()
@@ -678,19 +841,20 @@ def create_radar_chart(data1, data2, label1, label2):
     fig.update_layout(
         polar=dict(
             radialaxis=dict(visible=True, range=[0, 5], showticklabels=False, gridcolor='#334155'),
-            angularaxis=dict(gridcolor='#334155'),
+            angularaxis=dict(gridcolor='#334155', tickfont=dict(size=10)),
             bgcolor='rgba(15,23,42,0.8)'
         ),
         paper_bgcolor='rgba(0,0,0,0)',
         font=dict(color='#94a3b8', size=11),
         showlegend=True,
-        legend=dict(orientation="h", yanchor="bottom", y=-0.15, xanchor="center", x=0.5, font=dict(size=10)),
-        margin=dict(l=60, r=60, t=30, b=50),
-        height=300
+        legend=dict(orientation="h", yanchor="bottom", y=-0.2, xanchor="center", x=0.5, font=dict(size=10)),
+        margin=dict(l=60, r=60, t=30, b=60),
+        height=320
     )
     return fig
 
 def create_availability_chart():
+    """Crée un pie chart de disponibilité"""
     avail_data = get_availability_data()
     if not avail_data:
         return None
@@ -698,17 +862,18 @@ def create_availability_chart():
     fig = go.Figure(data=[go.Pie(
         labels=[d['name'] for d in avail_data],
         values=[d['value'] for d in avail_data],
-        hole=0.6,
-        marker=dict(colors=[d['color'] for d in avail_data], line=dict(color='#0f172a', width=2)),
+        hole=0.65,
+        marker=dict(colors=[d['color'] for d in avail_data], line=dict(color='#0f172a', width=3)),
         textinfo='none',
         hovertemplate='%{label}: %{value}<extra></extra>'
     )])
     
-    # Ajouter texte au centre
     total = sum(d['value'] for d in avail_data)
+    aptes = next((d['value'] for d in avail_data if d['name'] == 'Apte'), 0)
+    
     fig.add_annotation(
-        text=f"<b>{total}</b><br><span style='font-size:10px'>joueurs</span>",
-        x=0.5, y=0.5, font=dict(size=20, color='white'),
+        text=f"<b style='font-size:28px'>{aptes}</b><br><span style='font-size:11px;color:#94a3b8'>/{total} aptes</span>",
+        x=0.5, y=0.5, font=dict(size=16, color='white'),
         showarrow=False
     )
     
@@ -718,11 +883,12 @@ def create_availability_chart():
         font=dict(color='#94a3b8'),
         showlegend=False,
         margin=dict(l=10, r=10, t=10, b=10),
-        height=180
+        height=200
     )
     return fig
 
 def create_zscore_chart(data):
+    """Crée un graphique de Z-Score"""
     if not data or len(data) < 5:
         return None
     
@@ -751,8 +917,8 @@ def create_zscore_chart(data):
         paper_bgcolor='rgba(0,0,0,0)', 
         plot_bgcolor='rgba(15,23,42,0.8)',
         font=dict(color='#94a3b8', size=10),
-        margin=dict(l=40, r=20, t=20, b=40),
-        height=250,
+        margin=dict(l=40, r=20, t=20, b=50),
+        height=280,
         xaxis=dict(showgrid=False, tickangle=-45),
         yaxis=dict(showgrid=True, gridcolor='#1e293b', range=[-3, 3], zeroline=True, zerolinecolor='#475569'),
         showlegend=False,
@@ -761,6 +927,7 @@ def create_zscore_chart(data):
     return fig
 
 def create_weight_chart(player_name, days=30):
+    """Crée un graphique d'évolution du poids"""
     dates = sorted(st.session_state.data.keys())[-days:]
     if not dates:
         return None
@@ -782,9 +949,9 @@ def create_weight_chart(player_name, days=30):
     
     fig = go.Figure()
     
-    # Zone cible
-    fig.add_hrect(y0=target-2, y1=target+2, fillcolor="rgba(16,185,129,0.1)", line_width=0)
-    fig.add_hline(y=target, line_dash="dash", line_color="#6b7280", annotation_text="Cible")
+    # Zone cible ±2kg
+    fig.add_hrect(y0=target-2, y1=target+2, fillcolor="rgba(16,185,129,0.15)", line_width=0)
+    fig.add_hline(y=target, line_dash="dash", line_color="#6b7280", annotation_text=f"Cible: {target}kg")
     
     fig.add_trace(go.Scatter(
         x=df['date'], 
@@ -800,14 +967,65 @@ def create_weight_chart(player_name, days=30):
         plot_bgcolor='rgba(15,23,42,0.8)',
         font=dict(color='#94a3b8', size=10),
         margin=dict(l=40, r=20, t=20, b=40),
-        height=220,
+        height=240,
         xaxis=dict(showgrid=False),
         yaxis=dict(showgrid=True, gridcolor='#1e293b'),
         showlegend=False
     )
     return fig
 
+def create_metrics_evolution_chart(player_name, metric='global', days=30):
+    """Crée un graphique d'évolution d'une métrique"""
+    history = get_player_history(player_name, days)
+    if not history:
+        return None
+    
+    chart_data = []
+    for h in history:
+        if metric == 'global':
+            val = h.get('avg')
+        else:
+            val = h.get(metric)
+        
+        if val is not None:
+            chart_data.append({'date': format_date(h['date']), 'value': val})
+    
+    if not chart_data:
+        return None
+    
+    df = pd.DataFrame(chart_data)
+    
+    fig = go.Figure()
+    
+    # Zones de couleur
+    fig.add_hrect(y0=0, y1=2, fillcolor="rgba(239,68,68,0.1)", line_width=0)
+    fig.add_hrect(y0=2, y1=3, fillcolor="rgba(245,158,11,0.1)", line_width=0)
+    fig.add_hrect(y0=3, y1=5, fillcolor="rgba(16,185,129,0.1)", line_width=0)
+    
+    fig.add_trace(go.Scatter(
+        x=df['date'],
+        y=df['value'],
+        mode='lines+markers',
+        line=dict(color='#6366f1', width=3),
+        marker=dict(size=8, color='#6366f1', line=dict(color='white', width=2)),
+        fill='tozeroy',
+        fillcolor='rgba(99,102,241,0.1)'
+    ))
+    
+    fig.update_layout(
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(15,23,42,0.8)',
+        font=dict(color='#94a3b8'),
+        margin=dict(l=40, r=20, t=20, b=40),
+        height=240,
+        yaxis=dict(range=[0, 5], showgrid=True, gridcolor='#1e293b'),
+        xaxis=dict(showgrid=False),
+        showlegend=False
+    )
+    return fig
+
 def zscore_series(metric='global', group=None, days=30):
+    """Calcule la série de Z-Scores pour une métrique/groupe"""
     dates = sorted(st.session_state.data.keys())[-days:]
     if len(dates) < 5:
         return []
@@ -838,10 +1056,96 @@ def zscore_series(metric='global', group=None, days=30):
     
     return result
 
+def player_zscore_series(player_name, days=30):
+    """Calcule la série de Z-Scores pour un joueur"""
+    dates = sorted(st.session_state.data.keys())[-days:]
+    if len(dates) < 5:
+        return []
+    
+    result = []
+    for date in dates:
+        data = st.session_state.data.get(date, [])
+        pd_data = next((d for d in data if d['name'] == player_name), None)
+        if not pd_data:
+            continue
+        
+        avg = get_player_average(pd_data)
+        if avg is not None:
+            prev_avgs = [r['value'] for r in result[-14:]]
+            zscore = calculate_zscore(avg, prev_avgs) if len(prev_avgs) >= 3 else 0
+            result.append({'date': date, 'value': avg, 'zscore': round(zscore, 2)})
+    
+    return result
 
-# ==================== FICHE JOUEUR ====================
+
+# ==================== CALENDRIER WELLNESS ====================
+def create_wellness_calendar(player_name, year=None, month=None):
+    """Crée un calendrier wellness pour un joueur"""
+    if year is None:
+        year = datetime.now().year
+    if month is None:
+        month = datetime.now().month
+    
+    # Récupérer les données du mois
+    month_data = {}
+    for date_str, data in st.session_state.data.items():
+        try:
+            d = datetime.strptime(date_str, '%Y-%m-%d')
+            if d.year == year and d.month == month:
+                pd_data = next((x for x in data if x['name'] == player_name), None)
+                if pd_data:
+                    avg = get_player_average(pd_data)
+                    month_data[d.day] = avg
+        except:
+            pass
+    
+    # Créer le calendrier
+    cal = calendar.Calendar(firstweekday=0)  # Lundi = 0
+    month_days = list(cal.itermonthdays(year, month))
+    
+    # En-têtes
+    days_header = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
+    
+    html = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center;">'
+    
+    # En-têtes des jours
+    for day_name in days_header:
+        html += f'<div style="font-size:10px;color:#64748b;padding:4px;">{day_name}</div>'
+    
+    # Jours du mois
+    for day in month_days:
+        if day == 0:
+            html += '<div></div>'
+        else:
+            avg = month_data.get(day)
+            if avg is not None:
+                if avg >= 4:
+                    bg = '#10b981'
+                elif avg >= 3:
+                    bg = '#f59e0b'
+                else:
+                    bg = '#ef4444'
+                html += f'''
+                <div class="calendar-day" style="background:{bg};color:white;">
+                    <span style="font-weight:bold;">{day}</span>
+                    <span style="font-size:9px;">{avg:.1f}</span>
+                </div>
+                '''
+            else:
+                html += f'''
+                <div class="calendar-day" style="background:rgba(71,85,105,0.3);color:#64748b;">
+                    <span>{day}</span>
+                </div>
+                '''
+    
+    html += '</div>'
+    return html
+
+
+# ==================== FICHE JOUEUR (MODAL) ====================
 @st.dialog("📋 Fiche Joueur", width="large")
 def show_player_modal(player_id):
+    """Affiche la fiche complète d'un joueur dans une modale"""
     player = next((p for p in st.session_state.players if p['id'] == player_id), None)
     if not player:
         st.error("Joueur non trouvé")
@@ -856,21 +1160,25 @@ def show_player_modal(player_id):
     col1, col2 = st.columns([3, 1])
     with col1:
         status_class = {'Apte': 'status-apte', 'Blessé': 'status-blesse', 'Réhabilitation': 'status-rehab', 'Réathlétisation': 'status-reath'}.get(player['status'], '')
+        avatar_class = get_avatar_gradient(player['name'])
+        
         st.markdown(f"""
         <div style="display:flex;align-items:center;gap:16px;">
-            <div style="width:64px;height:64px;border-radius:16px;background:linear-gradient(135deg,#10b981,#0d9488);display:flex;align-items:center;justify-content:center;font-size:28px;font-weight:bold;color:white;box-shadow:0 4px 12px rgba(16,185,129,0.3);">{player['name'][0]}</div>
+            <div class="player-avatar {avatar_class}" style="width:70px;height:70px;font-size:28px;">{player['name'][0]}</div>
             <div>
-                <div style="font-size:24px;font-weight:bold;color:white;">{player['name']}</div>
-                <div style="font-size:13px;color:#94a3b8;margin-bottom:4px;">{player['position']} • {get_player_group(player['position'])} • {get_player_line(player['position'])}</div>
+                <div style="font-size:26px;font-weight:bold;color:white;">{player['name']}</div>
+                <div style="font-size:13px;color:#94a3b8;margin-bottom:6px;">
+                    {player['position']} • {get_player_group(player['position'])} • {get_player_line(player['position'])}
+                </div>
                 <span class="status-badge {status_class}">{player['status']}</span>
             </div>
         </div>
         """, unsafe_allow_html=True)
     
     with col2:
-        sel_date = st.selectbox("📅 Date", dates[:30], format_func=lambda x: format_date(x, 'short'), key="modal_date", label_visibility="collapsed")
+        sel_date = st.selectbox("📅", dates[:30], format_func=lambda x: format_date(x, 'short'), key="modal_date", label_visibility="collapsed")
     
-    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
     
     # Données du jour
     today_data = st.session_state.data.get(sel_date, [])
@@ -879,19 +1187,23 @@ def show_player_modal(player_id):
     team_avg = get_team_avg(sel_date)
     diff_vs_team = (avg - team_avg['global']) if avg and team_avg and team_avg.get('global') else None
     
-    # Moyenne joueur vs équipe
+    # Cards Moyenne joueur vs équipe
     c1, c2 = st.columns(2)
     with c1:
         avg_str = f"{avg:.2f}" if avg else "-"
-        diff_str = f"({'+' if diff_vs_team >= 0 else ''}{diff_vs_team:.2f})" if diff_vs_team else ""
-        diff_color = "#10b981" if diff_vs_team and diff_vs_team >= 0 else "#ef4444"
+        diff_str = ""
+        diff_color = "#64748b"
+        if diff_vs_team is not None:
+            diff_color = "#10b981" if diff_vs_team >= 0 else "#ef4444"
+            diff_str = f"({'+' if diff_vs_team >= 0 else ''}{diff_vs_team:.2f})"
+        
         st.markdown(f"""
         <div class="glass-card">
-            <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:1px;">Moyenne joueur</div>
+            <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Moyenne joueur</div>
             <div style="display:flex;align-items:baseline;gap:8px;">
-                <span style="font-size:36px;font-weight:bold;color:white;">{avg_str}</span>
-                <span style="font-size:20px;color:#64748b;">/5</span>
-                <span style="font-size:14px;font-weight:600;color:{diff_color};">{diff_str}</span>
+                <span style="font-size:40px;font-weight:bold;color:white;">{avg_str}</span>
+                <span style="font-size:18px;color:#64748b;">/5</span>
+                <span style="font-size:16px;font-weight:600;color:{diff_color};">{diff_str}</span>
             </div>
         </div>
         """, unsafe_allow_html=True)
@@ -900,85 +1212,126 @@ def show_player_modal(player_id):
         team_str = f"{team_avg['global']:.2f}" if team_avg and team_avg.get('global') else "-"
         st.markdown(f"""
         <div class="glass-card" style="text-align:right;">
-            <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:1px;">Moyenne équipe</div>
+            <div style="font-size:11px;color:#64748b;text-transform:uppercase;letter-spacing:1px;margin-bottom:4px;">Moyenne équipe</div>
             <div style="display:flex;align-items:baseline;gap:8px;justify-content:flex-end;">
-                <span style="font-size:36px;font-weight:bold;color:#10b981;">{team_str}</span>
-                <span style="font-size:20px;color:#64748b;">/5</span>
+                <span style="font-size:40px;font-weight:bold;color:#10b981;">{team_str}</span>
+                <span style="font-size:18px;color:#64748b;">/5</span>
             </div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-    
-    # Métriques du jour
-    cols = st.columns(7)
-    
-    with cols[0]:
-        weight_val = pd.get('weight')
-        st.markdown(f"""
-        <div class="glass-card" style="text-align:center;">
-            <div style="font-size:20px;">⚖️</div>
-            <div style="font-size:18px;font-weight:bold;color:white;">{f"{weight_val:.1f}" if weight_val else "-"}</div>
-            <div style="font-size:9px;color:#64748b;">kg</div>
-        </div>
-        """, unsafe_allow_html=True)
-    
-    for i, m in enumerate(METRICS):
-        val = pd.get(m['key'])
-        color = get_color_for_value(val)
-        with cols[i + 1]:
-            st.markdown(f"""
-            <div class="glass-card" style="text-align:center;">
-                <div style="font-size:20px;">{m['icon']}</div>
-                <div style="font-size:18px;font-weight:bold;color:{color};">{int(val) if val else "-"}</div>
-                <div style="font-size:9px;color:#64748b;">/5</div>
-            </div>
-            """, unsafe_allow_html=True)
-    
-    with cols[6]:
-        st.markdown(f"""
-        <div class="glass-card" style="text-align:center;background:rgba(16,185,129,0.15);border-color:rgba(16,185,129,0.3);">
-            <div style="font-size:20px;">⚡</div>
-            <div style="font-size:18px;font-weight:bold;color:#10b981;">{f"{avg:.1f}" if avg else "-"}</div>
-            <div style="font-size:9px;color:#6ee7b7;">Moy</div>
         </div>
         """, unsafe_allow_html=True)
     
     st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
     
-    # Graphiques
-    col1, col2 = st.columns(2)
+    # Métriques du jour (7 colonnes)
+    cols = st.columns(7)
     
-    with col1:
-        st.markdown("##### 📊 Radar comparatif")
-        compare_type = st.selectbox("Comparer avec", ["Équipe", "Avants", "Trois-quarts"], key="modal_compare", label_visibility="collapsed")
+    # Poids
+    with cols[0]:
+        weight_val = pd.get('weight')
+        target = player.get('targetWeight', 90)
+        weight_diff = ""
+        if weight_val and target:
+            diff = weight_val - target
+            weight_diff = f"<span style='font-size:10px;color:{'#10b981' if abs(diff) <= 2 else '#ef4444'}'>{'+' if diff > 0 else ''}{diff:.1f}</span>"
         
-        compare_avg = get_team_avg(sel_date, group=None if compare_type == "Équipe" else compare_type)
+        st.markdown(f"""
+        <div class="glass-card" style="text-align:center;padding:12px;">
+            <div style="font-size:22px;">⚖️</div>
+            <div style="font-size:20px;font-weight:bold;color:white;">{f"{weight_val:.1f}" if weight_val else "-"}</div>
+            <div style="font-size:10px;color:#64748b;">kg {weight_diff}</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # 5 métriques
+    for i, m in enumerate(METRICS):
+        val = pd.get(m['key'])
+        color = get_color_for_value(val)
+        with cols[i + 1]:
+            st.markdown(f"""
+            <div class="glass-card" style="text-align:center;padding:12px;">
+                <div style="font-size:22px;">{m['icon']}</div>
+                <div style="font-size:20px;font-weight:bold;color:{color};">{int(val) if val else "-"}</div>
+                <div style="font-size:10px;color:#64748b;">/5</div>
+            </div>
+            """, unsafe_allow_html=True)
+    
+    # Moyenne
+    with cols[6]:
+        avg_color = get_color_for_value(avg)
+        st.markdown(f"""
+        <div class="glass-card" style="text-align:center;padding:12px;background:linear-gradient(135deg, rgba(16,185,129,0.2), rgba(16,185,129,0.05));border-color:rgba(16,185,129,0.3);">
+            <div style="font-size:22px;">⚡</div>
+            <div style="font-size:20px;font-weight:bold;color:{avg_color};">{f"{avg:.1f}" if avg else "-"}</div>
+            <div style="font-size:10px;color:#6ee7b7;">Moyenne</div>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
+    
+    # Graphiques
+    tab1, tab2, tab3, tab4 = st.tabs(["📊 Radar", "⚖️ Poids", "📈 Évolution", "📅 Calendrier"])
+    
+    with tab1:
+        compare_type = st.selectbox("Comparer avec", ["Équipe", "Avants", "Trois-quarts", get_player_line(player['position']), player['position']], key="modal_compare")
+        
+        if compare_type == "Équipe":
+            compare_avg = get_team_avg(sel_date)
+        elif compare_type in ["Avants", "Trois-quarts"]:
+            compare_avg = get_team_avg(sel_date, group=compare_type)
+        elif compare_type == player['position']:
+            compare_avg = get_team_avg(sel_date, position=compare_type)
+        else:
+            compare_avg = get_team_avg(sel_date, line=compare_type)
+        
         player_data = {m['key']: pd.get(m['key'], 0) for m in METRICS}
         fig = create_radar_chart(player_data, compare_avg, player['name'], compare_type)
         st.plotly_chart(fig, use_container_width=True)
     
-    with col2:
-        st.markdown("##### ⚖️ Évolution poids")
+    with tab2:
         weight_fig = create_weight_chart(player['name'])
         if weight_fig:
             st.plotly_chart(weight_fig, use_container_width=True)
         else:
-            st.info("Pas de données de poids")
+            st.info("Pas de données de poids disponibles")
+    
+    with tab3:
+        metric_sel = st.selectbox("Métrique", ['global'] + [m['key'] for m in METRICS],
+            format_func=lambda x: "⚡ Global" if x == 'global' else next((f"{m['icon']} {m['label']}" for m in METRICS if m['key'] == x), x),
+            key="modal_evol_metric")
+        
+        evol_fig = create_metrics_evolution_chart(player['name'], metric_sel)
+        if evol_fig:
+            st.plotly_chart(evol_fig, use_container_width=True)
+        else:
+            st.info("Pas assez de données")
+    
+    with tab4:
+        now = datetime.now()
+        col_m1, col_m2 = st.columns(2)
+        with col_m1:
+            cal_month = st.selectbox("Mois", range(1, 13), index=now.month - 1, 
+                format_func=lambda x: ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'][x-1],
+                key="cal_month")
+        with col_m2:
+            cal_year = st.selectbox("Année", [now.year - 1, now.year, now.year + 1], index=1, key="cal_year")
+        
+        calendar_html = create_wellness_calendar(player['name'], cal_year, cal_month)
+        st.markdown(calendar_html, unsafe_allow_html=True)
+        st.caption("🟢 ≥4 | 🟡 3-4 | 🔴 <3 | ⬜ Pas de données")
     
     # Remarque
     if pd.get('remark'):
         st.markdown(f"""
-        <div class="glass-card" style="margin-top:16px;">
-            <div style="font-size:12px;color:#64748b;margin-bottom:4px;">💬 Remarque du jour</div>
-            <div style="color:white;">{pd['remark']}</div>
+        <div class="glass-card" style="margin-top:20px;">
+            <div style="font-size:12px;color:#64748b;margin-bottom:6px;">💬 Remarque du jour</div>
+            <div style="color:white;font-size:14px;">{pd['remark']}</div>
         </div>
         """, unsafe_allow_html=True)
     
-    st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
     
     # Modifier statut
-    st.markdown("##### 🔄 Modifier le statut")
+    st.markdown("#### 🔄 Modifier le statut")
     new_status = st.radio("", STATUSES, index=STATUSES.index(player['status']), horizontal=True, key="modal_status", label_visibility="collapsed")
     
     if new_status != player['status']:
@@ -992,21 +1345,26 @@ def show_player_modal(player_id):
 
 # ==================== PAGES ====================
 def page_dashboard():
+    """Page principale - Dashboard"""
     st.markdown("# 📊 Dashboard Wellness")
     
     dates = sorted(st.session_state.data.keys(), reverse=True)
     if not dates:
         st.markdown("""
-        <div class="premium-card" style="text-align:center;padding:3rem;">
-            <div style="font-size:60px;margin-bottom:1rem;">📥</div>
-            <h2 style="color:white;margin-bottom:0.5rem;">Bienvenue dans Wellness Tracker !</h2>
-            <p style="color:#94a3b8;margin-bottom:1.5rem;">Importez vos données depuis Google Sheets pour commencer le suivi de vos joueurs.</p>
-            <p style="color:#64748b;font-size:14px;">👈 Allez dans <b>Import</b> dans le menu latéral</p>
+        <div class="premium-card" style="text-align:center;padding:4rem;">
+            <div style="font-size:80px;margin-bottom:1rem;">🏉</div>
+            <h2 style="color:white;margin-bottom:1rem;">Bienvenue dans Wellness Tracker !</h2>
+            <p style="color:#94a3b8;font-size:16px;margin-bottom:2rem;">
+                Commencez par importer vos données depuis Google Sheets pour suivre le bien-être de vos joueurs.
+            </p>
+            <p style="color:#64748b;font-size:14px;">
+                👈 Allez dans <b>📥 Import</b> dans le menu latéral
+            </p>
         </div>
         """, unsafe_allow_html=True)
         return
     
-    # Sélecteur de date stylisé
+    # Sélecteur de date
     col1, col2 = st.columns([3, 1])
     with col2:
         date_key = st.selectbox("", dates, format_func=lambda x: format_date(x, 'full'), key="dash_date", label_visibility="collapsed")
@@ -1014,13 +1372,13 @@ def page_dashboard():
     today_data = st.session_state.data.get(date_key, [])
     team = get_team_avg(date_key)
     
-    # Moyenne équipe - Card premium
+    # === MOYENNE ÉQUIPE - Hero Card ===
     if team:
         metrics_html = ''.join([
-            f'''<div style="text-align:center;min-width:70px;">
-                <div style="font-size:28px;">{m["icon"]}</div>
-                <div style="font-size:22px;font-weight:bold;color:white;">{team.get(m["key"], 0):.1f if team.get(m["key"]) else "-"}</div>
-                <div style="font-size:10px;color:rgba(255,255,255,0.7);">{m["label"]}</div>
+            f'''<div style="text-align:center;min-width:80px;">
+                <div style="font-size:30px;margin-bottom:4px;">{m["icon"]}</div>
+                <div style="font-size:24px;font-weight:bold;color:white;">{team.get(m["key"], 0):.1f if team.get(m["key"]) else "-"}</div>
+                <div style="font-size:11px;color:rgba(255,255,255,0.7);">{m["label"]}</div>
             </div>'''
             for m in METRICS
         ])
@@ -1032,24 +1390,26 @@ def page_dashboard():
         <div class="team-avg-card">
             <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:2rem;position:relative;z-index:1;">
                 <div>
-                    <div style="color:rgba(255,255,255,0.8);font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:2px;">⚡ Moyenne Équipe</div>
-                    <div style="font-size:4rem;font-weight:800;color:white;line-height:1;">{global_str}<span style="font-size:1.5rem;color:rgba(255,255,255,0.6);">/5</span></div>
-                    <div style="color:rgba(255,255,255,0.7);font-size:14px;margin-top:4px;">{team.get('count', 0)} joueurs aujourd'hui</div>
+                    <div style="color:rgba(255,255,255,0.8);font-size:13px;font-weight:600;text-transform:uppercase;letter-spacing:2px;margin-bottom:8px;">⚡ Moyenne Équipe</div>
+                    <div style="font-size:4.5rem;font-weight:800;color:white;line-height:1;">{global_str}<span style="font-size:1.8rem;color:rgba(255,255,255,0.6);">/5</span></div>
+                    <div style="color:rgba(255,255,255,0.7);font-size:15px;margin-top:8px;">📊 {team.get('count', 0)} joueurs aujourd'hui</div>
                 </div>
-                <div style="display:flex;gap:24px;flex-wrap:wrap;">{metrics_html}</div>
+                <div style="display:flex;gap:28px;flex-wrap:wrap;">{metrics_html}</div>
             </div>
         </div>
         """, unsafe_allow_html=True)
     
-    # Alertes + Disponibilité
+    # === ALERTES + DISPONIBILITÉ ===
     col_alerts, col_avail = st.columns([2, 1])
     
     with col_alerts:
         alerts = get_alerts(date_key)
+        alert_count = len(alerts)
+        
         st.markdown(f"""
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
             <h3 style="margin:0;color:white;">⚠️ Alertes du jour</h3>
-            {f'<span style="background:#ef4444;color:white;padding:4px 12px;border-radius:20px;font-size:12px;font-weight:600;">{len(alerts)}</span>' if alerts else ''}
+            {f'<span style="background:linear-gradient(135deg,#ef4444,#dc2626);color:white;padding:5px 14px;border-radius:20px;font-size:13px;font-weight:600;box-shadow:0 2px 8px rgba(239,68,68,0.3);">{alert_count}</span>' if alert_count else ''}
         </div>
         """, unsafe_allow_html=True)
         
@@ -1058,27 +1418,27 @@ def page_dashboard():
             for a in alerts:
                 by_player.setdefault(a['player'], []).append(a)
             
-            for player_name, player_alerts in list(by_player.items())[:5]:
+            for player_name, player_alerts in list(by_player.items())[:6]:
                 msgs = " • ".join([a['message'] for a in player_alerts])
                 has_critical = any(a['type'] == 'critical' for a in player_alerts)
                 card_class = "alert-card" if has_critical else "alert-card warning"
-                badge = "Critique" if has_critical else "Attention"
+                badge = "🔴 Critique" if has_critical else "🟡 Attention"
                 
                 st.markdown(f"""
                 <div class="{card_class}">
-                    <div style="display:flex;justify-content:space-between;align-items:center;">
+                    <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
                         <span style="font-weight:600;color:white;font-size:14px;">{player_name}</span>
-                        <span style="font-size:10px;font-weight:600;text-transform:uppercase;">{badge}</span>
+                        <span style="font-size:10px;font-weight:600;text-transform:uppercase;opacity:0.8;">{badge}</span>
                     </div>
-                    <div style="font-size:12px;margin-top:4px;opacity:0.9;">{msgs}</div>
+                    <div style="font-size:12px;opacity:0.9;">{msgs}</div>
                 </div>
                 """, unsafe_allow_html=True)
         else:
             st.markdown("""
-            <div class="glass-card" style="text-align:center;padding:2rem;">
-                <div style="font-size:40px;margin-bottom:8px;">✅</div>
-                <div style="color:#10b981;font-weight:600;">Aucune alerte</div>
-                <div style="color:#64748b;font-size:12px;">Tous les joueurs sont en forme !</div>
+            <div class="glass-card" style="text-align:center;padding:2.5rem;">
+                <div style="font-size:50px;margin-bottom:12px;">✅</div>
+                <div style="color:#10b981;font-weight:600;font-size:16px;">Aucune alerte</div>
+                <div style="color:#64748b;font-size:13px;margin-top:4px;">Tous les joueurs sont en forme !</div>
             </div>
             """, unsafe_allow_html=True)
     
@@ -1091,28 +1451,28 @@ def page_dashboard():
             if fig:
                 st.plotly_chart(fig, use_container_width=True)
             
-            legend_html = " ".join([
-                f'<span style="display:inline-flex;align-items:center;margin-right:12px;"><span style="width:10px;height:10px;border-radius:50%;background:{d["color"]};margin-right:6px;"></span><span style="color:#94a3b8;font-size:11px;">{d["name"]}: <b style="color:white">{d["value"]}</b></span></span>'
+            legend_html = "".join([
+                f'<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;"><span style="width:12px;height:12px;border-radius:3px;background:{d["color"]};"></span><span style="color:#94a3b8;font-size:12px;">{d["name"]}: <b style="color:white">{d["value"]}</b></span></div>'
                 for d in avail_data
             ])
-            st.markdown(f'<div style="text-align:center;">{legend_html}</div>', unsafe_allow_html=True)
+            st.markdown(f'<div style="padding:0 10px;">{legend_html}</div>', unsafe_allow_html=True)
     
-    st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
     
-    # Filtres
-    st.markdown("<h3 style='color:white;'>📋 Vue équipe</h3>", unsafe_allow_html=True)
+    # === FILTRES ===
+    st.markdown("<h3 style='color:white;margin-bottom:16px;'>📋 Vue équipe</h3>", unsafe_allow_html=True)
     
     c1, c2, c3, c4 = st.columns([1.5, 1.5, 1.5, 1])
     with c1:
-        sort_by = st.selectbox("Trier", ["Nom A→Z", "🚨 Alertes", "📉 Moyenne ↑", "👥 Groupe"], key="sort", label_visibility="collapsed")
+        sort_by = st.selectbox("Trier par", ["Nom A→Z", "🚨 Alertes d'abord", "📉 Moyenne (↑)", "👥 Par groupe"], key="sort", label_visibility="collapsed")
     with c2:
-        filter_group = st.selectbox("Groupe", ["Tous", "Avants", "Trois-quarts"], key="fg", label_visibility="collapsed")
+        filter_group = st.selectbox("Groupe", ["Tous les groupes", "Avants", "Trois-quarts"], key="fg", label_visibility="collapsed")
     with c3:
-        filter_line = st.selectbox("Ligne", ["Toutes"] + ALL_LINES, key="fl", label_visibility="collapsed")
+        filter_line = st.selectbox("Ligne", ["Toutes les lignes"] + ALL_LINES, key="fl", label_visibility="collapsed")
     with c4:
         show_issues = st.checkbox("⚠️ Problèmes", key="si")
     
-    # Tableau des joueurs
+    # === TABLEAU DES JOUEURS ===
     rows = []
     player_ids = {}
     
@@ -1120,9 +1480,9 @@ def page_dashboard():
         p = next((p for p in st.session_state.players if p['name'] == d['name']), None)
         if not p:
             continue
-        if filter_group != "Tous" and get_player_group(p['position']) != filter_group:
+        if filter_group not in ["Tous les groupes", "Tous"] and get_player_group(p['position']) != filter_group:
             continue
-        if filter_line != "Toutes" and get_player_line(p['position']) != filter_line:
+        if filter_line not in ["Toutes les lignes", "Toutes"] and get_player_line(p['position']) != filter_line:
             continue
         
         avg = get_player_average(d)
@@ -1148,75 +1508,76 @@ def page_dashboard():
         })
     
     # Tri
-    if sort_by == "🚨 Alertes":
-        rows.sort(key=lambda x: (not x['has_issue'], x['name']))
-    elif sort_by == "📉 Moyenne ↑":
+    if sort_by == "🚨 Alertes d'abord":
+        rows.sort(key=lambda x: (not x['has_issue'], x['avg'] or 5))
+    elif sort_by == "📉 Moyenne (↑)":
         rows.sort(key=lambda x: x['avg'] or 5)
-    elif sort_by == "👥 Groupe":
+    elif sort_by == "👥 Par groupe":
         rows.sort(key=lambda x: (x['group'], x['name']))
     else:
         rows.sort(key=lambda x: x['name'])
     
-    # Affichage des joueurs
+    # Affichage
     if rows:
-        st.markdown(f"<div style='color:#64748b;font-size:12px;margin-bottom:12px;'>{len(rows)} joueurs</div>", unsafe_allow_html=True)
+        st.markdown(f"<div style='color:#64748b;font-size:13px;margin-bottom:12px;'>{len(rows)} joueurs affichés</div>", unsafe_allow_html=True)
         
         for row in rows:
-            # Métriques HTML
+            # Métriques badges
             metrics_badges = ""
             for m in METRICS:
                 val = row['metrics'].get(m['key'])
                 color = get_color_for_value(val)
                 metrics_badges += f'<span class="metric-badge" style="background:{color};">{int(val) if val else "-"}</span>'
             
-            # Moyenne
+            # Moyenne + diff
             avg_color = get_color_for_value(row['avg'])
             avg_str = f"{row['avg']:.1f}" if row['avg'] else "-"
             
-            # Diff vs équipe
             diff_str = ""
             if row['diff'] is not None:
                 diff_color = "#10b981" if row['diff'] >= 0 else "#ef4444"
-                diff_str = f'<span style="color:{diff_color};font-size:11px;font-weight:600;">{("+" if row["diff"] >= 0 else "")}{row["diff"]:.1f}</span>'
+                diff_str = f'<span style="color:{diff_color};font-size:12px;font-weight:600;">{("+" if row["diff"] >= 0 else "")}{row["diff"]:.1f}</span>'
             
-            # Status
+            # Status badge
             status_class = {'Apte': 'status-apte', 'Blessé': 'status-blesse', 'Réhabilitation': 'status-rehab', 'Réathlétisation': 'status-reath'}.get(row['status'], '')
             group_abbr = "Av" if row['group'] == "Avants" else "3/4"
+            avatar_class = get_avatar_gradient(row['name'])
+            alert_class = "has-alert" if row['has_issue'] else ""
             
             col1, col2 = st.columns([5, 1])
             
             with col1:
                 st.markdown(f"""
-                <div class="player-row">
+                <div class="player-row {alert_class}">
                     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
                         <div style="display:flex;align-items:center;gap:12px;min-width:200px;">
-                            <div style="width:40px;height:40px;border-radius:10px;background:linear-gradient(135deg,#3b82f6,#1d4ed8);display:flex;align-items:center;justify-content:center;font-weight:bold;color:white;">{row['name'][0]}</div>
+                            <div class="player-avatar {avatar_class}">{row['name'][0]}</div>
                             <div>
-                                <div style="font-weight:600;color:white;">{row['name']}</div>
+                                <div style="font-weight:600;color:white;font-size:14px;">{row['name']}</div>
                                 <div style="font-size:11px;color:#64748b;">{row['position']} ({group_abbr})</div>
                             </div>
                         </div>
                         <span class="status-badge {status_class}">{row['status']}</span>
+                        <div style="color:#94a3b8;font-size:13px;min-width:55px;text-align:center;">{f"{row['weight']:.1f}" if row['weight'] else "-"} kg</div>
                         <div style="display:flex;align-items:center;gap:4px;">
-                            <span style="color:#64748b;font-size:12px;min-width:45px;">{f"{row['weight']:.1f}" if row['weight'] else "-"} kg</span>
                             {metrics_badges}
-                            <span class="metric-badge" style="background:{avg_color};margin-left:8px;">{avg_str}</span>
-                            <span style="min-width:40px;text-align:center;">{diff_str}</span>
+                            <span class="metric-badge" style="background:{avg_color};margin-left:8px;font-size:13px;">{avg_str}</span>
+                            <span style="min-width:45px;text-align:center;">{diff_str}</span>
                         </div>
-                        <div style="color:#64748b;font-size:11px;max-width:150px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{row['remark'][:30] if row['remark'] else ''}</div>
+                        <div style="color:#64748b;font-size:11px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{row['remark']}">{row['remark'][:25] + '...' if len(row['remark']) > 25 else row['remark']}</div>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
             
             with col2:
-                if st.button("👁️", key=f"btn_{row['name']}", use_container_width=True):
+                if st.button("👁️ Fiche", key=f"btn_{row['name']}", use_container_width=True):
                     show_player_modal(player_ids[row['name']])
     else:
-        st.info("Aucun joueur ne correspond aux filtres.")
+        st.info("Aucun joueur ne correspond aux filtres sélectionnés.")
     
-    st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:40px'></div>", unsafe_allow_html=True)
     
-    # Graphiques
+    # === GRAPHIQUES ===
     col1, col2 = st.columns(2)
     
     with col1:
@@ -1228,92 +1589,125 @@ def page_dashboard():
         with mc2:
             zgroup = st.selectbox("Groupe", ["Équipe", "Avants", "Trois-quarts"], key="zg")
         with mc3:
-            zdays = st.selectbox("Période", [7, 14, 30, 60], index=2, key="zd")
+            zdays = st.selectbox("Période", [7, 14, 30, 60], index=2, format_func=lambda x: f"{x} jours", key="zd")
         
         zdata = zscore_series(metric=zmetric, group=None if zgroup == "Équipe" else zgroup, days=zdays)
         fig = create_zscore_chart(zdata)
         if fig:
             st.plotly_chart(fig, use_container_width=True)
-            st.caption("🟢 Normal | 🟡 Attention (< -1) | 🔴 Alerte (< -1.5)")
+            st.caption("🟢 Normal (≥ -1) | 🟡 Attention (-1.5 à -1) | 🔴 Alerte (< -1.5)")
         else:
-            st.info("Pas assez de données (min 5 jours)")
+            st.info("Pas assez de données (minimum 5 jours)")
     
     with col2:
         st.markdown("### 📊 Comparaison Radar")
         rc1, rc2 = st.columns(2)
         with rc1:
-            cmp1 = st.selectbox("", ["Équipe", "Avants", "Trois-quarts"], key="r1", label_visibility="collapsed")
+            cmp1 = st.selectbox("Groupe 1", ["Équipe", "Avants", "Trois-quarts"], key="r1")
         with rc2:
-            cmp2 = st.selectbox("", ["Équipe", "Avants", "Trois-quarts"], index=1, key="r2", label_visibility="collapsed")
+            cmp2 = st.selectbox("Groupe 2", ["Équipe", "Avants", "Trois-quarts"], index=1, key="r2")
         
         d1 = get_team_avg(date_key, group=None if cmp1 == "Équipe" else cmp1)
         d2 = get_team_avg(date_key, group=None if cmp2 == "Équipe" else cmp2)
         
         if d1 or d2:
             st.plotly_chart(create_radar_chart(d1, d2, cmp1, cmp2), use_container_width=True)
+        else:
+            st.info("Pas de données pour la comparaison")
 
 
 def page_import():
+    """Page d'import/export"""
     st.markdown("# 📥 Import / Export")
     
-    # Google Sheets
+    # === GOOGLE SHEETS ===
     st.markdown("""
     <div class="premium-card">
-        <h3 style="color:white;margin-bottom:16px;">📊 Importer depuis Google Sheets</h3>
+        <h3 style="color:white;margin-bottom:20px;">📊 Importer depuis Google Sheets</h3>
     """, unsafe_allow_html=True)
     
     url = st.text_input(
         "URL du Google Sheet",
         value="https://docs.google.com/spreadsheets/d/1Esm3NnED51jFpTs-oSjIdVybH51BSEcjhWOQhP1P3zI/edit?usp=sharing",
-        help="Collez l'URL complète de votre Google Sheet (doit être partagé en lecture)"
+        help="Collez l'URL complète de votre Google Sheet (doit être partagé en lecture publique)"
     )
     
-    sheet_name = st.text_input("Nom de l'onglet", value="Bien-être", help="Nom exact de l'onglet contenant les données")
+    sheet_name = st.text_input(
+        "Nom de l'onglet", 
+        value="Bien-être", 
+        help="Nom exact de l'onglet contenant les données wellness"
+    )
     
-    if st.button("📥 Importer depuis Google Sheets", type="primary", use_container_width=True):
-        try:
-            match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
-            if not match:
-                st.error("❌ URL invalide")
-                return
-            
-            doc_id = match.group(1)
-            encoded_sheet = urllib.parse.quote(sheet_name)
-            csv_url = f"https://docs.google.com/spreadsheets/d/{doc_id}/gviz/tq?tqx=out:csv&sheet={encoded_sheet}"
-            
-            with st.spinner("📡 Téléchargement..."):
-                df = pd.read_csv(csv_url, header=None)
-            
-            st.success(f"✅ {len(df)} lignes téléchargées")
-            
-            with st.spinner("🔄 Traitement des données..."):
-                result = process_imported_data(df)
-            
-            if result['success']:
-                st.balloons()
-                st.success(f"""
-                ✅ **Import réussi !**
-                - 📅 Date: {format_date(result['date'], 'full')}
-                - 👥 {result['players']} joueurs ({result['new_players']} nouveaux)
-                - 📊 {result['entries']} entrées
-                """)
-            else:
-                st.error(f"❌ {result['error']}")
-                
-        except Exception as e:
-            st.error(f"❌ Erreur: {str(e)}")
+    debug_mode = st.checkbox("🔧 Mode debug", value=False, help="Affiche les détails du parsing")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        if st.button("👁️ Voir le contenu brut", use_container_width=True):
+            try:
+                match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
+                if match:
+                    doc_id = match.group(1)
+                    encoded_sheet = urllib.parse.quote(sheet_name)
+                    csv_url = f"https://docs.google.com/spreadsheets/d/{doc_id}/gviz/tq?tqx=out:csv&sheet={encoded_sheet}"
+                    
+                    df = pd.read_csv(csv_url, header=None)
+                    st.success(f"✅ {len(df)} lignes × {len(df.columns)} colonnes")
+                    
+                    st.markdown("**Premières lignes:**")
+                    for i in range(min(8, len(df))):
+                        row_vals = [f"`{df.iloc[i, j]}`" for j in range(min(10, len(df.columns))) if pd.notna(df.iloc[i, j])]
+                        st.write(f"**Ligne {i}:** {' | '.join(row_vals)}")
+                    
+                    st.dataframe(df.head(15))
+            except Exception as e:
+                st.error(f"Erreur: {e}")
+    
+    with col2:
+        if st.button("📥 Importer les données", type="primary", use_container_width=True):
+            try:
+                match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
+                if not match:
+                    st.error("❌ URL invalide")
+                else:
+                    doc_id = match.group(1)
+                    encoded_sheet = urllib.parse.quote(sheet_name)
+                    csv_url = f"https://docs.google.com/spreadsheets/d/{doc_id}/gviz/tq?tqx=out:csv&sheet={encoded_sheet}"
+                    
+                    with st.spinner("📡 Téléchargement..."):
+                        df = pd.read_csv(csv_url, header=None)
+                    
+                    st.success(f"✅ {len(df)} lignes téléchargées")
+                    
+                    with st.spinner("🔄 Traitement..."):
+                        result = process_imported_data(df, debug=debug_mode)
+                    
+                    if result['success']:
+                        st.balloons()
+                        st.success(f"""
+                        ✅ **Import réussi !**
+                        - 📅 Date: **{format_date(result['date'], 'full')}**
+                        - 👥 {result['players']} joueurs ({result['new_players']} nouveaux)
+                        - 📊 {result['entries']} entrées
+                        """)
+                    else:
+                        st.error(f"❌ Erreur: {result['error']}")
+                        
+            except Exception as e:
+                st.error(f"❌ Erreur: {str(e)}")
     
     st.markdown("</div>", unsafe_allow_html=True)
     
     st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
     
-    # Excel
+    # === EXCEL ===
     st.markdown("""
     <div class="premium-card">
-        <h3 style="color:white;margin-bottom:16px;">📄 Importer un fichier Excel</h3>
+        <h3 style="color:white;margin-bottom:20px;">📄 Importer un fichier Excel/CSV</h3>
     """, unsafe_allow_html=True)
     
-    uploaded = st.file_uploader("", type=['xlsx', 'xls', 'csv'], label_visibility="collapsed")
+    uploaded = st.file_uploader("Glissez votre fichier ici", type=['xlsx', 'xls', 'csv'], label_visibility="collapsed")
+    
     if uploaded:
         try:
             if uploaded.name.endswith('.csv'):
@@ -1321,29 +1715,29 @@ def page_import():
             else:
                 df = pd.read_excel(uploaded, header=None)
             
-            st.info(f"📊 {len(df)} lignes trouvées")
+            st.info(f"📊 Fichier chargé: {len(df)} lignes × {len(df.columns)} colonnes")
             
             if st.button("📥 Traiter le fichier", use_container_width=True):
                 with st.spinner("Traitement..."):
-                    result = process_imported_data(df)
+                    result = process_imported_data(df, debug=debug_mode)
                 
                 if result['success']:
                     st.balloons()
-                    st.success(f"✅ Import réussi ! {result['entries']} entrées ajoutées.")
+                    st.success(f"✅ Import réussi ! {result['entries']} joueurs pour le {format_date(result['date'], 'full')}")
                 else:
                     st.error(f"❌ {result['error']}")
         except Exception as e:
-            st.error(f"❌ Erreur: {e}")
+            st.error(f"❌ Erreur de lecture: {e}")
     
     st.markdown("</div>", unsafe_allow_html=True)
     
     st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
     
-    # Export
+    # === EXPORT ===
     if st.session_state.data:
         st.markdown("""
         <div class="premium-card">
-            <h3 style="color:white;margin-bottom:16px;">📤 Exporter les données</h3>
+            <h3 style="color:white;margin-bottom:20px;">📤 Exporter les données</h3>
         """, unsafe_allow_html=True)
         
         export_rows = []
@@ -1354,31 +1748,35 @@ def page_import():
                     'Joueur': e.get('name'),
                     'Poids': e.get('weight'),
                     **{m['label']: e.get(m['key']) for m in METRICS},
-                    'Remarque': e.get('remark')
+                    'Remarque': e.get('remark', '')
                 })
         
         if export_rows:
             export_df = pd.DataFrame(export_rows)
             csv = export_df.to_csv(index=False).encode('utf-8')
             
-            col1, col2 = st.columns(2)
+            col1, col2, col3 = st.columns([2, 1, 1])
             with col1:
                 st.download_button("📥 Télécharger CSV", csv, "wellness_export.csv", "text/csv", use_container_width=True)
             with col2:
-                st.metric("Total", f"{len(export_rows)} entrées")
+                st.metric("📊 Entrées", len(export_rows))
+            with col3:
+                st.metric("📅 Jours", len(st.session_state.data))
         
         st.markdown("</div>", unsafe_allow_html=True)
 
 
 def page_effectif():
+    """Page Effectif & Comparaisons"""
     st.markdown("# 👥 Effectif & Comparaisons")
     
     if not st.session_state.players:
-        st.warning("Aucun joueur. Importez des données d'abord.")
+        st.warning("Aucun joueur enregistré. Importez des données d'abord.")
         return
     
-    tabs = st.tabs(["📋 Liste", "📊 Comparer", "📈 Évolution", "👥 Groupes"])
+    tabs = st.tabs(["📋 Liste", "📊 Comparer", "📈 Évolution", "👥 Par groupe"])
     
+    # === TAB LISTE ===
     with tabs[0]:
         search = st.text_input("🔍 Rechercher un joueur", key="search_eff")
         
@@ -1389,6 +1787,8 @@ def page_effectif():
         dates = sorted(st.session_state.data.keys(), reverse=True)
         latest_date = dates[0] if dates else None
         
+        st.markdown(f"<div style='color:#64748b;font-size:13px;margin:12px 0;'>{len(players)} joueurs</div>", unsafe_allow_html=True)
+        
         for p in sorted(players, key=lambda x: x['name']):
             pd_data = {}
             if latest_date:
@@ -1397,6 +1797,7 @@ def page_effectif():
             
             avg = get_player_average(pd_data)
             status_class = {'Apte': 'status-apte', 'Blessé': 'status-blesse', 'Réhabilitation': 'status-rehab', 'Réathlétisation': 'status-reath'}.get(p['status'], '')
+            avatar_class = get_avatar_gradient(p['name'])
             
             metrics_badges = ""
             for m in METRICS:
@@ -1411,10 +1812,10 @@ def page_effectif():
                 <div class="player-row">
                     <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;">
                         <div style="display:flex;align-items:center;gap:12px;">
-                            <div style="width:44px;height:44px;border-radius:12px;background:linear-gradient(135deg,#10b981,#059669);display:flex;align-items:center;justify-content:center;font-weight:bold;color:white;font-size:18px;">{p['name'][0]}</div>
+                            <div class="player-avatar {avatar_class}">{p['name'][0]}</div>
                             <div>
                                 <div style="font-weight:600;color:white;font-size:15px;">{p['name']}</div>
-                                <div style="font-size:12px;color:#64748b;">{p['position']} • {get_player_group(p['position'])}</div>
+                                <div style="font-size:12px;color:#64748b;">{p['position']} • {get_player_group(p['position'])} • {get_player_line(p['position'])}</div>
                             </div>
                         </div>
                         <span class="status-badge {status_class}">{p['status']}</span>
@@ -1427,6 +1828,7 @@ def page_effectif():
                 if st.button("👁️", key=f"view_eff_{p['id']}", use_container_width=True):
                     show_player_modal(p['id'])
     
+    # === TAB COMPARER ===
     with tabs[1]:
         st.markdown("### 📊 Comparer des joueurs")
         
@@ -1434,19 +1836,19 @@ def page_effectif():
         
         col1, col2 = st.columns(2)
         with col1:
-            sel1 = st.multiselect("Sélectionner 2-4 joueurs", player_names, max_selections=4, key="cmp_players")
+            sel_players = st.multiselect("Sélectionner 2 à 4 joueurs", player_names, max_selections=4, key="cmp_players")
         with col2:
             dates = sorted(st.session_state.data.keys(), reverse=True)
             cmp_date = st.selectbox("Date", dates[:30] if dates else [], format_func=lambda x: format_date(x, 'short'), key="cmp_date") if dates else None
         
-        if len(sel1) >= 2 and cmp_date:
+        if len(sel_players) >= 2 and cmp_date:
             today_data = st.session_state.data.get(cmp_date, [])
             
             fig = go.Figure()
             colors = ['#10b981', '#3b82f6', '#f59e0b', '#ef4444']
             categories = [m['label'] for m in METRICS]
             
-            for i, name in enumerate(sel1):
+            for i, name in enumerate(sel_players):
                 pd_data = next((d for d in today_data if d['name'] == name), {})
                 vals = [pd_data.get(m['key'], 0) or 0 for m in METRICS]
                 vals.append(vals[0])
@@ -1456,46 +1858,38 @@ def page_effectif():
                     theta=categories + [categories[0]],
                     fill='toself',
                     name=name,
-                    line=dict(color=colors[i % len(colors)], width=2),
-                    fillcolor=f'rgba{tuple(int(colors[i % len(colors)].lstrip("#")[j:j+2], 16) for j in (0, 2, 4)) + (0.2,)}'
+                    line=dict(color=colors[i % len(colors)], width=2)
                 ))
             
             fig.update_layout(
                 polar=dict(radialaxis=dict(visible=True, range=[0, 5]), bgcolor='rgba(15,23,42,0.8)'),
-                paper_bgcolor='rgba(0,0,0,0)',
-                font=dict(color='#94a3b8'),
-                height=450
+                paper_bgcolor='rgba(0,0,0,0)', font=dict(color='#94a3b8'), height=450
             )
-            
             st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Sélectionnez au moins 2 joueurs pour comparer")
     
+    # === TAB ÉVOLUTION ===
     with tabs[2]:
-        st.markdown("### 📈 Évolution sur période")
+        st.markdown("### 📈 Évolution individuelle")
         
         col1, col2, col3 = st.columns(3)
         with col1:
             sel_player = st.selectbox("Joueur", [p['name'] for p in st.session_state.players], key="evol_player")
         with col2:
-            period = st.selectbox("Période", [7, 14, 30, 60], index=2, key="evol_days")
+            period = st.selectbox("Période", [7, 14, 30, 60], index=2, format_func=lambda x: f"{x} jours", key="evol_days")
         with col3:
             sel_metric = st.selectbox("Métrique", ['global'] + [m['key'] for m in METRICS],
                 format_func=lambda x: "⚡ Global" if x == 'global' else next((f"{m['icon']} {m['label']}" for m in METRICS if m['key'] == x), x), key="evol_metric")
         
         if sel_player:
-            history = get_player_history(sel_player, period)
-            if history:
-                chart_data = [{'date': format_date(h['date']), 'value': h['avg'] if sel_metric == 'global' else h.get(sel_metric)}
-                              for h in history if (h['avg'] if sel_metric == 'global' else h.get(sel_metric)) is not None]
-                
-                if chart_data:
-                    df = pd.DataFrame(chart_data)
-                    fig = px.line(df, x='date', y='value', markers=True)
-                    fig.update_traces(line_color='#10b981', line_width=3, marker=dict(size=8))
-                    fig.update_layout(paper_bgcolor='rgba(0,0,0,0)', plot_bgcolor='rgba(15,23,42,0.8)',
-                                      font=dict(color='#94a3b8'), height=350,
-                                      xaxis=dict(showgrid=False), yaxis=dict(showgrid=True, gridcolor='#1e293b'))
-                    st.plotly_chart(fig, use_container_width=True)
+            fig = create_metrics_evolution_chart(sel_player, sel_metric, period)
+            if fig:
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("Pas assez de données pour ce joueur")
     
+    # === TAB GROUPES ===
     with tabs[3]:
         st.markdown("### 👥 Vue par groupes")
         
@@ -1503,20 +1897,34 @@ def page_effectif():
         if dates:
             grp_date = st.selectbox("Date", dates[:30], format_func=lambda x: format_date(x, 'short'), key="grp_date")
             
-            for group_name in ['Avants', 'Trois-quarts']:
-                grp_avg = get_team_avg(grp_date, group=group_name)
-                if grp_avg:
-                    global_str = f"{grp_avg.get('global'):.2f}" if grp_avg.get('global') else "-"
-                    st.markdown(f"#### {group_name} - Moyenne: **{global_str}/5**")
-                    
-                    for line_name in RUGBY_POSITIONS[group_name].keys():
-                        line_avg = get_team_avg(grp_date, line=line_name)
-                        if line_avg:
-                            line_str = f"{line_avg.get('global'):.2f}" if line_avg.get('global') else "-"
-                            st.markdown(f"• **{line_name}**: {line_str}/5 ({line_avg.get('count', 0)} joueurs)")
+            col1, col2 = st.columns(2)
+            
+            for i, group_name in enumerate(['Avants', 'Trois-quarts']):
+                with [col1, col2][i]:
+                    grp_avg = get_team_avg(grp_date, group=group_name)
+                    if grp_avg:
+                        global_str = f"{grp_avg.get('global'):.2f}" if grp_avg.get('global') else "-"
+                        color = "#ef4444" if group_name == "Avants" else "#3b82f6"
+                        
+                        st.markdown(f"""
+                        <div class="glass-card" style="margin-bottom:16px;">
+                            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+                                <span style="font-weight:bold;color:white;font-size:18px;">{group_name}</span>
+                                <span style="font-size:28px;font-weight:bold;color:{color};">{global_str}/5</span>
+                            </div>
+                            <div style="color:#64748b;font-size:13px;">{grp_avg.get('count', 0)} joueurs</div>
+                        </div>
+                        """, unsafe_allow_html=True)
+                        
+                        for line_name in RUGBY_POSITIONS[group_name].keys():
+                            line_avg = get_team_avg(grp_date, line=line_name)
+                            if line_avg and line_avg.get('global'):
+                                line_str = f"{line_avg.get('global'):.2f}"
+                                st.markdown(f"• **{line_name}**: {line_str}/5 ({line_avg.get('count', 0)} joueurs)")
 
 
 def page_infirmerie():
+    """Page Infirmerie"""
     st.markdown("# 🏥 Infirmerie")
     
     # Stats de disponibilité
@@ -1527,13 +1935,16 @@ def page_infirmerie():
     
     cols = st.columns(4)
     status_colors = {'Apte': '#10b981', 'Blessé': '#ef4444', 'Réhabilitation': '#f59e0b', 'Réathlétisation': '#3b82f6'}
+    status_icons = {'Apte': '✅', 'Blessé': '🤕', 'Réhabilitation': '🔄', 'Réathlétisation': '💪'}
     
     for i, status in enumerate(STATUSES):
         count = status_counts.get(status, 0)
         with cols[i]:
             color = status_colors.get(status, '#64748b')
+            icon = status_icons.get(status, '👤')
             selected = st.session_state.status_filter == status
-            if st.button(f"{status}\n**{count}**", key=f"filter_{status}", use_container_width=True,
+            
+            if st.button(f"{icon} {status}\n**{count}**", key=f"filter_{status}", use_container_width=True,
                         type="primary" if selected else "secondary"):
                 st.session_state.status_filter = status if not selected else None
                 st.rerun()
@@ -1544,13 +1955,22 @@ def page_infirmerie():
     filtered_players = [p for p in st.session_state.players if not current_filter or p.get('status') == current_filter]
     
     if current_filter:
-        st.info(f"Filtré par: **{current_filter}** ({len(filtered_players)} joueurs)")
+        st.info(f"🔍 Filtré par: **{current_filter}** ({len(filtered_players)} joueurs)")
     
-    for p in filtered_players:
+    for p in sorted(filtered_players, key=lambda x: x['name']):
         col1, col2, col3 = st.columns([3, 2, 2])
         
         with col1:
-            st.markdown(f"**{p['name']}** - {p['position']}")
+            avatar_class = get_avatar_gradient(p['name'])
+            st.markdown(f"""
+            <div style="display:flex;align-items:center;gap:12px;">
+                <div class="player-avatar {avatar_class}">{p['name'][0]}</div>
+                <div>
+                    <div style="font-weight:600;color:white;">{p['name']}</div>
+                    <div style="font-size:12px;color:#64748b;">{p['position']}</div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
         
         with col2:
             new_status = st.selectbox("", STATUSES, index=STATUSES.index(p.get('status', 'Apte')),
@@ -1563,39 +1983,48 @@ def page_infirmerie():
         
         with col3:
             if p.get('status') != 'Apte':
-                if st.button("➕ Blessure", key=f"inj_{p['id']}"):
+                if st.button("➕ Blessure", key=f"inj_{p['id']}", use_container_width=True):
                     st.session_state[f'show_injury_{p["id"]}'] = True
         
+        # Formulaire blessure
         if st.session_state.get(f'show_injury_{p["id"]}'):
             with st.form(f'injury_form_{p["id"]}'):
+                st.markdown(f"**Nouvelle blessure pour {p['name']}**")
                 ic1, ic2 = st.columns(2)
                 with ic1:
-                    zone = st.selectbox("Zone", list(INJURY_ZONES.keys()))
+                    zone = st.selectbox("Zone", list(INJURY_ZONES.keys()), key=f"zone_{p['id']}")
                 with ic2:
-                    grade = st.selectbox("Grade", [1, 2, 3])
+                    grade = st.selectbox("Grade", [1, 2, 3], key=f"grade_{p['id']}")
                 
-                circ = st.selectbox("Circonstance", CIRCUMSTANCES)
+                circ = st.selectbox("Circonstance", CIRCUMSTANCES, key=f"circ_{p['id']}")
                 duration = INJURY_ZONES[zone].get(grade, 14)
-                st.info(f"⏱️ Durée estimée: {duration} jours")
+                st.info(f"⏱️ Durée estimée: **{duration} jours**")
                 
-                if st.form_submit_button("💾 Enregistrer"):
-                    st.session_state.injuries.append({
-                        'id': f"i_{len(st.session_state.injuries)}",
-                        'playerId': p['id'],
-                        'playerName': p['name'],
-                        'zone': zone,
-                        'grade': grade,
-                        'circumstance': circ,
-                        'date': datetime.now().strftime('%Y-%m-%d'),
-                        'returnDate': (datetime.now() + timedelta(days=duration)).strftime('%Y-%m-%d'),
-                        'status': 'Active'
-                    })
-                    st.session_state[f'show_injury_{p["id"]}'] = False
-                    st.rerun()
+                col_s1, col_s2 = st.columns(2)
+                with col_s1:
+                    if st.form_submit_button("💾 Enregistrer", use_container_width=True):
+                        st.session_state.injuries.append({
+                            'id': f"i_{len(st.session_state.injuries)}",
+                            'playerId': p['id'],
+                            'playerName': p['name'],
+                            'zone': zone,
+                            'grade': grade,
+                            'circumstance': circ,
+                            'date': datetime.now().strftime('%Y-%m-%d'),
+                            'returnDate': (datetime.now() + timedelta(days=duration)).strftime('%Y-%m-%d'),
+                            'status': 'Active'
+                        })
+                        st.session_state[f'show_injury_{p["id"]}'] = False
+                        st.success("✅ Blessure enregistrée")
+                        st.rerun()
+                with col_s2:
+                    if st.form_submit_button("❌ Annuler", use_container_width=True):
+                        st.session_state[f'show_injury_{p["id"]}'] = False
+                        st.rerun()
         
         st.markdown("---")
     
-    # Blessures actives
+    # === BLESSURES ACTIVES ===
     st.markdown("### 🩹 Blessures actives")
     active_injuries = [i for i in st.session_state.injuries if i.get('status') == 'Active']
     
@@ -1606,168 +2035,307 @@ def page_infirmerie():
             progress = max(0, min(100, ((days_total - max(0, days_remaining)) / days_total) * 100))
             
             col1, col2, col3 = st.columns([3, 4, 2])
+            
             with col1:
-                st.markdown(f"**{inj['playerName']}**<br>{INJURY_ZONES[inj['zone']]['icon']} {inj['zone']} (Grade {inj['grade']})", unsafe_allow_html=True)
+                st.markdown(f"""
+                <div>
+                    <div style="font-weight:bold;color:white;">{inj['playerName']}</div>
+                    <div style="font-size:13px;color:#94a3b8;">{INJURY_ZONES[inj['zone']]['icon']} {inj['zone']} (Grade {inj['grade']})</div>
+                    <div style="font-size:11px;color:#64748b;">{inj['circumstance']} - {format_date(inj['date'])}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            
             with col2:
-                st.progress(progress / 100)
-                st.caption(f"{max(0, days_remaining)} jours restants")
+                progress_color = "#10b981" if progress > 75 else "#f59e0b" if progress > 40 else "#ef4444"
+                st.markdown(f"""
+                <div style="margin-top:10px;">
+                    <div class="custom-progress">
+                        <div class="custom-progress-fill" style="width:{progress}%;background:{progress_color};"></div>
+                    </div>
+                    <div style="font-size:12px;color:#94a3b8;margin-top:4px;">
+                        {max(0, days_remaining)} jours restants • Retour prévu: {format_date(inj['returnDate'])}
+                    </div>
+                </div>
+                """, unsafe_allow_html=True)
+            
             with col3:
-                if st.button("✅ Guéri", key=f"heal_{inj['id']}"):
+                if st.button("✅ Guéri", key=f"heal_{inj['id']}", use_container_width=True):
                     for injury in st.session_state.injuries:
                         if injury['id'] == inj['id']:
                             injury['status'] = 'Healed'
+                    st.success("✅ Joueur marqué comme guéri")
                     st.rerun()
+            
+            st.markdown("---")
     else:
-        st.success("✅ Aucune blessure active")
+        st.success("✅ Aucune blessure active - Tous les joueurs sont en forme !")
 
 
 def page_joueurs():
+    """Page Gestion des joueurs"""
     st.markdown("# 👤 Gestion des joueurs")
     
-    # Ajouter
-    with st.expander("➕ Ajouter un joueur", expanded=False):
+    # === AJOUTER ===
+    with st.expander("➕ Ajouter un nouveau joueur", expanded=False):
         with st.form("add_player"):
             col1, col2 = st.columns(2)
             with col1:
-                name = st.text_input("Nom")
+                name = st.text_input("Nom complet")
                 position = st.selectbox("Poste", ALL_POSITIONS)
             with col2:
-                weight = st.number_input("Poids forme (kg)", value=90.0, step=0.5)
-                status = st.selectbox("Statut", STATUSES)
+                weight = st.number_input("Poids forme (kg)", value=90.0, min_value=50.0, max_value=200.0, step=0.5)
+                status = st.selectbox("Statut initial", STATUSES)
             
-            if st.form_submit_button("➕ Ajouter", use_container_width=True):
-                if name:
-                    st.session_state.players.append({
-                        'id': f"p_{len(st.session_state.players)}_{datetime.now().timestamp():.0f}",
-                        'name': name, 'position': position, 'targetWeight': weight, 'status': status
-                    })
-                    st.success(f"✅ {name} ajouté !")
-                    st.rerun()
+            if st.form_submit_button("➕ Ajouter le joueur", use_container_width=True, type="primary"):
+                if name and len(name) >= 2:
+                    if not any(p['name'].lower() == name.lower() for p in st.session_state.players):
+                        st.session_state.players.append({
+                            'id': f"p_{len(st.session_state.players)}_{datetime.now().timestamp():.0f}",
+                            'name': name, 'position': position, 'targetWeight': weight, 'status': status
+                        })
+                        st.success(f"✅ {name} ajouté à l'effectif !")
+                        st.rerun()
+                    else:
+                        st.error("❌ Ce joueur existe déjà")
+                else:
+                    st.error("❌ Entrez un nom valide (minimum 2 caractères)")
     
     st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
     
-    # Liste
-    for p in sorted(st.session_state.players, key=lambda x: x['name']):
-        col1, col2, col3, col4, col5 = st.columns([2, 2, 1, 1, 0.5])
+    # === LISTE ===
+    if st.session_state.players:
+        st.markdown(f"<div style='color:#64748b;font-size:13px;margin-bottom:12px;'>📋 {len(st.session_state.players)} joueurs dans l'effectif</div>", unsafe_allow_html=True)
         
-        with col1:
-            st.write(f"**{p['name']}**")
-        with col2:
-            new_pos = st.selectbox("", ALL_POSITIONS,
-                index=ALL_POSITIONS.index(p['position']) if p['position'] in ALL_POSITIONS else 0,
-                key=f"pos_{p['id']}", label_visibility="collapsed")
-            if new_pos != p['position']:
-                for player in st.session_state.players:
-                    if player['id'] == p['id']:
-                        player['position'] = new_pos
-        with col3:
-            new_weight = st.number_input("", value=float(p.get('targetWeight', 90)), step=0.5,
-                key=f"weight_{p['id']}", label_visibility="collapsed")
-            if new_weight != p.get('targetWeight'):
-                for player in st.session_state.players:
-                    if player['id'] == p['id']:
-                        player['targetWeight'] = new_weight
-        with col4:
-            new_status = st.selectbox("", STATUSES, index=STATUSES.index(p.get('status', 'Apte')),
-                key=f"st_{p['id']}", label_visibility="collapsed")
-            if new_status != p.get('status'):
-                for player in st.session_state.players:
-                    if player['id'] == p['id']:
-                        player['status'] = new_status
-        with col5:
-            if st.button("🗑️", key=f"del_{p['id']}"):
-                st.session_state.players = [x for x in st.session_state.players if x['id'] != p['id']]
-                st.rerun()
+        for p in sorted(st.session_state.players, key=lambda x: x['name']):
+            col1, col2, col3, col4, col5 = st.columns([2.5, 2, 1.5, 1.5, 0.5])
+            
+            with col1:
+                avatar_class = get_avatar_gradient(p['name'])
+                st.markdown(f"""
+                <div style="display:flex;align-items:center;gap:10px;">
+                    <div class="player-avatar {avatar_class}" style="width:36px;height:36px;font-size:14px;">{p['name'][0]}</div>
+                    <span style="font-weight:600;color:white;">{p['name']}</span>
+                </div>
+                """, unsafe_allow_html=True)
+            
+            with col2:
+                new_pos = st.selectbox("", ALL_POSITIONS,
+                    index=ALL_POSITIONS.index(p['position']) if p['position'] in ALL_POSITIONS else 0,
+                    key=f"pos_{p['id']}", label_visibility="collapsed")
+                if new_pos != p['position']:
+                    for player in st.session_state.players:
+                        if player['id'] == p['id']:
+                            player['position'] = new_pos
+            
+            with col3:
+                new_weight = st.number_input("", value=float(p.get('targetWeight', 90)), min_value=50.0, max_value=200.0, step=0.5,
+                    key=f"weight_{p['id']}", label_visibility="collapsed")
+                if new_weight != p.get('targetWeight'):
+                    for player in st.session_state.players:
+                        if player['id'] == p['id']:
+                            player['targetWeight'] = new_weight
+            
+            with col4:
+                new_status = st.selectbox("", STATUSES, index=STATUSES.index(p.get('status', 'Apte')),
+                    key=f"st_{p['id']}", label_visibility="collapsed")
+                if new_status != p.get('status'):
+                    for player in st.session_state.players:
+                        if player['id'] == p['id']:
+                            player['status'] = new_status
+            
+            with col5:
+                if st.button("🗑️", key=f"del_{p['id']}", help="Supprimer ce joueur"):
+                    st.session_state.players = [x for x in st.session_state.players if x['id'] != p['id']]
+                    st.rerun()
+    else:
+        st.info("Aucun joueur. Importez des données ou ajoutez des joueurs manuellement.")
 
 
 def page_parametres():
+    """Page Paramètres"""
     st.markdown("# ⚙️ Paramètres")
     
+    # === SEUILS D'ALERTE ===
     st.markdown("### 🚨 Seuils d'alerte")
+    st.markdown("<div style='color:#64748b;font-size:13px;margin-bottom:12px;'>Configurez quand les alertes sont déclenchées</div>", unsafe_allow_html=True)
+    
     col1, col2, col3 = st.columns(3)
     with col1:
         st.session_state.settings['lowValueThreshold'] = st.number_input(
-            "Valeur basse", value=float(st.session_state.settings['lowValueThreshold']),
-            min_value=1.0, max_value=5.0, step=0.5, help="Alerte si métrique ≤ ce seuil")
+            "Valeur basse (1-5)", 
+            value=float(st.session_state.settings['lowValueThreshold']),
+            min_value=1.0, max_value=5.0, step=0.5, 
+            help="Alerte si une métrique est ≤ à ce seuil"
+        )
     with col2:
         st.session_state.settings['variationThreshold'] = st.number_input(
-            "Variation", value=float(st.session_state.settings['variationThreshold']),
-            min_value=0.5, max_value=3.0, step=0.5)
+            "Seuil variation", 
+            value=float(st.session_state.settings['variationThreshold']),
+            min_value=0.5, max_value=3.0, step=0.5,
+            help="Alerte si variation jour/jour ≥ ce seuil"
+        )
     with col3:
         st.session_state.settings['weightThreshold'] = st.number_input(
-            "Poids (kg)", value=float(st.session_state.settings['weightThreshold']),
-            min_value=1.0, max_value=5.0, step=0.5)
-    
-    st.markdown("### 📈 Z-Score")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.session_state.settings['zscoreDays'] = st.number_input(
-            "Jours calcul", value=int(st.session_state.settings['zscoreDays']),
-            min_value=7, max_value=60)
-    with col2:
-        st.session_state.settings['zscoreWarning'] = st.number_input(
-            "Seuil attention", value=float(st.session_state.settings['zscoreWarning']),
-            min_value=-3.0, max_value=0.0, step=0.5)
-    with col3:
-        st.session_state.settings['zscoreAlert'] = st.number_input(
-            "Seuil alerte", value=float(st.session_state.settings['zscoreAlert']),
-            min_value=-3.0, max_value=0.0, step=0.5)
+            "Écart poids (kg)", 
+            value=float(st.session_state.settings['weightThreshold']),
+            min_value=1.0, max_value=5.0, step=0.5,
+            help="Alerte si écart avec poids forme ≥ ce seuil"
+        )
     
     st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
     
+    # === Z-SCORE ===
+    st.markdown("### 📈 Paramètres Z-Score")
+    st.markdown("<div style='color:#64748b;font-size:13px;margin-bottom:12px;'>Configurez la détection de fatigue par Z-Score</div>", unsafe_allow_html=True)
+    
+    col1, col2, col3 = st.columns(3)
+    with col1:
+        st.session_state.settings['zscoreDays'] = st.number_input(
+            "Jours de calcul", 
+            value=int(st.session_state.settings['zscoreDays']),
+            min_value=7, max_value=60,
+            help="Nombre de jours utilisés pour calculer la moyenne et l'écart-type"
+        )
+    with col2:
+        st.session_state.settings['zscoreWarning'] = st.number_input(
+            "Seuil attention", 
+            value=float(st.session_state.settings['zscoreWarning']),
+            min_value=-3.0, max_value=0.0, step=0.5,
+            help="Z-Score en dessous duquel une attention est requise (jaune)"
+        )
+    with col3:
+        st.session_state.settings['zscoreAlert'] = st.number_input(
+            "Seuil alerte", 
+            value=float(st.session_state.settings['zscoreAlert']),
+            min_value=-3.0, max_value=0.0, step=0.5,
+            help="Z-Score en dessous duquel une alerte est déclenchée (rouge)"
+        )
+    
+    st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
+    
+    # === ACTIONS ===
+    st.markdown("### 🔧 Actions")
+    
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("🔄 Réinitialiser", use_container_width=True):
+        if st.button("🔄 Réinitialiser les paramètres", use_container_width=True):
             st.session_state.settings = DEFAULT_SETTINGS.copy()
-            st.success("✅ Paramètres réinitialisés")
+            st.success("✅ Paramètres réinitialisés aux valeurs par défaut")
+    
     with col2:
-        if st.button("🗑️ Effacer données", type="primary", use_container_width=True):
-            st.session_state.data = {}
-            st.session_state.players = []
-            st.session_state.injuries = []
-            st.success("✅ Données effacées")
-            st.rerun()
+        if st.button("🗑️ Effacer toutes les données", type="primary", use_container_width=True):
+            st.session_state.confirm_delete = True
+    
+    if st.session_state.get('confirm_delete'):
+        st.warning("⚠️ Cette action est irréversible ! Toutes les données seront supprimées.")
+        col_c1, col_c2 = st.columns(2)
+        with col_c1:
+            if st.button("✅ Confirmer la suppression", type="primary", use_container_width=True):
+                st.session_state.data = {}
+                st.session_state.players = []
+                st.session_state.injuries = []
+                st.session_state.confirm_delete = False
+                st.success("✅ Toutes les données ont été effacées")
+                st.rerun()
+        with col_c2:
+            if st.button("❌ Annuler", use_container_width=True):
+                st.session_state.confirm_delete = False
+                st.rerun()
+    
+    st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
+    
+    # === STATS ===
+    st.markdown("### 📊 Statistiques")
+    
+    col1, col2, col3, col4 = st.columns(4)
+    with col1:
+        st.markdown(f"""
+        <div class="stat-card">
+            <div style="font-size:32px;font-weight:bold;color:#10b981;">{len(st.session_state.data)}</div>
+            <div style="font-size:12px;color:#64748b;">Jours de données</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with col2:
+        st.markdown(f"""
+        <div class="stat-card">
+            <div style="font-size:32px;font-weight:bold;color:#3b82f6;">{len(st.session_state.players)}</div>
+            <div style="font-size:12px;color:#64748b;">Joueurs</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with col3:
+        total_entries = sum(len(e) for e in st.session_state.data.values())
+        st.markdown(f"""
+        <div class="stat-card">
+            <div style="font-size:32px;font-weight:bold;color:#f59e0b;">{total_entries}</div>
+            <div style="font-size:12px;color:#64748b;">Entrées totales</div>
+        </div>
+        """, unsafe_allow_html=True)
+    with col4:
+        active_injuries = len([i for i in st.session_state.injuries if i.get('status') == 'Active'])
+        st.markdown(f"""
+        <div class="stat-card">
+            <div style="font-size:32px;font-weight:bold;color:#ef4444;">{active_injuries}</div>
+            <div style="font-size:12px;color:#64748b;">Blessures actives</div>
+        </div>
+        """, unsafe_allow_html=True)
 
 
 # ==================== MAIN ====================
 def main():
+    """Point d'entrée principal"""
     with st.sidebar:
         st.markdown("""
-        <div style="text-align:center;padding:1rem 0;">
-            <div style="font-size:40px;margin-bottom:8px;">🏉</div>
-            <div style="font-size:18px;font-weight:bold;color:white;">Wellness Tracker</div>
-            <div style="font-size:11px;color:#64748b;">Rugby Performance</div>
+        <div style="text-align:center;padding:1.5rem 0;">
+            <div style="font-size:50px;margin-bottom:8px;">🏉</div>
+            <div style="font-size:20px;font-weight:bold;color:white;">Wellness Tracker</div>
+            <div style="font-size:12px;color:#64748b;">Rugby Performance</div>
         </div>
         """, unsafe_allow_html=True)
         
         st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
         
-        page = st.radio("", ["📊 Dashboard", "📥 Import", "👥 Effectif", "🏥 Infirmerie", "👤 Joueurs", "⚙️ Paramètres"],
-                       label_visibility="collapsed")
+        page = st.radio(
+            "", 
+            ["📊 Dashboard", "📥 Import", "👥 Effectif", "🏥 Infirmerie", "👤 Joueurs", "⚙️ Paramètres"],
+            label_visibility="collapsed"
+        )
         
         st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
         
+        # Alertes dans la sidebar
         dates = sorted(st.session_state.data.keys(), reverse=True)
         if dates:
             alerts = get_alerts(dates[0])
             if alerts:
                 st.markdown(f"""
-                <div style="background:rgba(239,68,68,0.15);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:12px;text-align:center;">
-                    <div style="font-size:24px;">🚨</div>
-                    <div style="color:#f87171;font-weight:600;">{len(alerts)} alertes</div>
+                <div style="background:linear-gradient(135deg,rgba(239,68,68,0.2),rgba(239,68,68,0.1));border:1px solid rgba(239,68,68,0.3);border-radius:12px;padding:16px;text-align:center;">
+                    <div style="font-size:28px;">🚨</div>
+                    <div style="color:#f87171;font-weight:600;font-size:16px;">{len(alerts)} alertes</div>
+                    <div style="color:#64748b;font-size:11px;">aujourd'hui</div>
                 </div>
                 """, unsafe_allow_html=True)
         
         st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
         
+        # Stats rapides
         st.markdown(f"""
-        <div style="color:#64748b;font-size:11px;">
-            <div>📊 {len(dates)} jours de données</div>
-            <div>👥 {len(st.session_state.players)} joueurs</div>
-            <div>🏥 {len([i for i in st.session_state.injuries if i.get('status') == 'Active'])} blessures actives</div>
+        <div style="color:#64748b;font-size:12px;padding:0 8px;">
+            <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                <span>📊 Données</span>
+                <span style="color:white;font-weight:600;">{len(dates)} jours</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;margin-bottom:6px;">
+                <span>👥 Joueurs</span>
+                <span style="color:white;font-weight:600;">{len(st.session_state.players)}</span>
+            </div>
+            <div style="display:flex;justify-content:space-between;">
+                <span>🏥 Blessures</span>
+                <span style="color:white;font-weight:600;">{len([i for i in st.session_state.injuries if i.get('status') == 'Active'])}</span>
+            </div>
         </div>
         """, unsafe_allow_html=True)
     
+    # Navigation
     pages = {
         "📊 Dashboard": page_dashboard,
         "📥 Import": page_import,
