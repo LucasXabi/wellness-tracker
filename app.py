@@ -691,44 +691,90 @@ def find_column_index(row, keywords, debug_info=None):
 def detect_date_blocks(df, debug=False):
     """
     Détecte les blocs de dates dans un fichier "Suivi BE" où les jours sont côte à côte.
-    Retourne une liste de blocs avec leur position et date.
+    Nouvelle approche: trouver les colonnes "Joueur" pour délimiter les blocs.
     """
+    import streamlit as st
     blocks = []
     
-    # Chercher les dates dans les premières lignes (généralement ligne 2-3)
-    for row_idx in range(min(5, len(df))):
-        row = df.iloc[row_idx]
-        col_idx = 0
-        
-        while col_idx < len(row):
-            cell = row.iloc[col_idx]
-            if pd.notna(cell):
-                parsed_date = parse_date_french(str(cell))
-                if parsed_date:
-                    # Trouver la fin du bloc (prochaine date ou fin de ligne)
-                    end_col = col_idx + 1
-                    while end_col < len(row):
-                        next_cell = row.iloc[end_col]
-                        if pd.notna(next_cell) and parse_date_french(str(next_cell)):
-                            break
-                        end_col += 1
-                    
-                    blocks.append({
-                        'date': parsed_date,
-                        'date_str': str(cell),
-                        'start_col': col_idx,
-                        'end_col': end_col,
-                        'date_row': row_idx
-                    })
-                    col_idx = end_col
-                    continue
-            col_idx += 1
+    # 1. Trouver la ligne des dates (chercher dans les premières lignes)
+    date_row_idx = None
+    dates_in_row = {}  # col_idx -> date_str
     
-    if debug and blocks:
-        import streamlit as st
-        st.write(f"📅 {len(blocks)} blocs de dates détectés")
-        for b in blocks[:5]:
-            st.write(f"  • {b['date_str']} (colonnes {b['start_col']}-{b['end_col']})")
+    for row_idx in range(min(6, len(df))):
+        row = df.iloc[row_idx]
+        found_dates = {}
+        for col_idx, cell in enumerate(row):
+            if pd.notna(cell):
+                parsed = parse_date_french(str(cell))
+                if parsed:
+                    found_dates[col_idx] = {'date': parsed, 'label': str(cell)}
+        
+        if len(found_dates) >= 1:  # On a trouvé au moins une date
+            date_row_idx = row_idx
+            dates_in_row = found_dates
+            if debug:
+                st.write(f"📅 Dates trouvées ligne {row_idx}: {len(found_dates)} dates")
+            break
+    
+    if not dates_in_row:
+        if debug:
+            st.warning("⚠️ Aucune date trouvée dans les premières lignes")
+        return []
+    
+    # 2. Trouver la ligne d'en-têtes (contient plusieurs "Joueur")
+    header_row_idx = None
+    joueur_columns = []  # Liste des colonnes où on trouve "Joueur"
+    
+    for row_idx in range(date_row_idx + 1, min(date_row_idx + 5, len(df))):
+        row = df.iloc[row_idx]
+        joueur_cols = []
+        for col_idx, cell in enumerate(row):
+            if pd.notna(cell):
+                cell_norm = normalize_text(cell)
+                if cell_norm == 'joueur' or cell_norm == 'nom':
+                    joueur_cols.append(col_idx)
+        
+        if joueur_cols:
+            header_row_idx = row_idx
+            joueur_columns = joueur_cols
+            if debug:
+                st.write(f"📋 En-têtes ligne {row_idx}: {len(joueur_cols)} blocs trouvés (colonnes: {joueur_cols})")
+            break
+    
+    if not joueur_columns:
+        if debug:
+            st.warning("⚠️ Colonnes 'Joueur' non trouvées")
+        return []
+    
+    # 3. Associer chaque colonne "Joueur" avec la date la plus proche à gauche ou au-dessus
+    for i, joueur_col in enumerate(joueur_columns):
+        # Trouver la fin du bloc (prochaine colonne Joueur ou fin)
+        if i + 1 < len(joueur_columns):
+            end_col = joueur_columns[i + 1]
+        else:
+            end_col = len(df.columns)
+        
+        # Trouver la date associée (la plus proche à gauche ou égale)
+        best_date = None
+        best_date_col = -1
+        for date_col, date_info in dates_in_row.items():
+            if date_col <= joueur_col and date_col > best_date_col:
+                best_date = date_info
+                best_date_col = date_col
+        
+        if best_date:
+            blocks.append({
+                'date': best_date['date'],
+                'date_str': best_date['label'],
+                'start_col': joueur_col,  # Commence à la colonne "Joueur"
+                'end_col': end_col,
+                'header_row': header_row_idx
+            })
+    
+    if debug:
+        st.write(f"✅ {len(blocks)} blocs détectés")
+        for b in blocks[:3]:
+            st.write(f"  • {b['date_str']}: colonnes {b['start_col']}-{b['end_col']}")
     
     return blocks
 
@@ -736,12 +782,6 @@ def detect_date_blocks(df, debug=False):
 def process_suivi_be_data(df, selected_dates=None, debug=False):
     """
     Traite les données du format "Suivi BE" avec les jours côte à côte.
-    
-    Structure attendue :
-    - Ligne avec dates (ex: "lundi 23 juin 2025" | "mardi 24 juin 2025")
-    - Ligne d'en-têtes pour chaque bloc
-    - Ligne EQUIPE
-    - Données joueurs
     """
     try:
         import streamlit as st
@@ -754,7 +794,7 @@ def process_suivi_be_data(df, selected_dates=None, debug=False):
         blocks = detect_date_blocks(df, debug)
         
         if not blocks:
-            return {'success': False, 'error': "Aucune date trouvée dans le fichier. Format attendu: dates en ligne 2 ou 3."}
+            return {'success': False, 'error': "Aucun bloc de données trouvé. Vérifiez que le fichier contient des dates et des colonnes 'Joueur'."}
         
         # Si aucune date sélectionnée, retourner la liste des dates disponibles
         if selected_dates is None:
@@ -764,21 +804,7 @@ def process_suivi_be_data(df, selected_dates=None, debug=False):
                 'available_dates': [{'date': b['date'], 'label': b['date_str']} for b in blocks]
             }
         
-        # 2. Trouver la ligne d'en-têtes (contient "Joueur" ou "Sommeil")
-        header_row = None
-        for i in range(min(10, len(df))):
-            row = df.iloc[i]
-            row_text = ' '.join([str(x).lower() for x in row if pd.notna(x)])
-            if 'joueur' in row_text and ('sommeil' in row_text or 'motivation' in row_text):
-                header_row = i
-                if debug:
-                    st.success(f"📋 En-têtes trouvés ligne {i}")
-                break
-        
-        if header_row is None:
-            return {'success': False, 'error': "Ligne d'en-têtes non trouvée."}
-        
-        # 3. Traiter chaque bloc sélectionné
+        # 2. Traiter chaque bloc sélectionné
         total_entries = 0
         players_created = 0
         dates_imported = []
@@ -790,23 +816,23 @@ def process_suivi_be_data(df, selected_dates=None, debug=False):
             date_key = block['date']
             start_col = block['start_col']
             end_col = block['end_col']
+            header_row_idx = block['header_row']
             
             if debug:
-                st.write(f"📊 Traitement de {block['date_str']} (colonnes {start_col}-{end_col})")
+                st.write(f"📊 Traitement de **{block['date_str']}** (colonnes {start_col}-{end_col})")
             
             # Mapper les colonnes dans ce bloc
-            header_row_data = df.iloc[header_row]
-            col_indices = {}
+            header_row_data = df.iloc[header_row_idx]
+            col_indices = {'name': start_col}  # La première colonne est toujours "Joueur"
             
-            for j in range(start_col, min(end_col, len(header_row_data))):
+            # Parcourir les colonnes du bloc pour trouver les autres en-têtes
+            for j in range(start_col + 1, min(end_col, len(header_row_data))):
                 cell = header_row_data.iloc[j]
                 if pd.notna(cell):
                     cell_norm = normalize_text(cell)
-                    if 'joueur' in cell_norm or cell_norm == 'nom':
-                        col_indices['name'] = j
-                    elif 'sommeil' in cell_norm:
+                    if 'sommeil' in cell_norm:
                         col_indices['sleep'] = j
-                    elif 'charge' in cell_norm and 'mental' in cell_norm:
+                    elif 'charge' in cell_norm:
                         col_indices['mentalLoad'] = j
                     elif 'motivation' in cell_norm:
                         col_indices['motivation'] = j
@@ -817,15 +843,14 @@ def process_suivi_be_data(df, selected_dates=None, debug=False):
                     elif 'remarque' in cell_norm or 'commentaire' in cell_norm:
                         col_indices['remark'] = j
             
-            if 'name' not in col_indices:
-                if debug:
-                    st.warning(f"⚠️ Colonne 'Joueur' non trouvée pour {block['date_str']}")
-                continue
+            if debug:
+                st.write(f"  Colonnes mappées: {list(col_indices.keys())}")
             
             # Extraire les données des joueurs
             entries = []
+            skipped_players = []
             
-            for row_idx in range(header_row + 1, len(df)):
+            for row_idx in range(header_row_idx + 1, len(df)):
                 row = df.iloc[row_idx]
                 
                 # Récupérer le nom
@@ -859,6 +884,7 @@ def process_suivi_be_data(df, selected_dates=None, debug=False):
                     players_created += 1
                 
                 entry = {'name': name}
+                metrics_found = []
                 
                 # Métriques (1-5)
                 for metric_key in ['sleep', 'mentalLoad', 'motivation', 'hdcState', 'bdcState']:
@@ -871,6 +897,7 @@ def process_suivi_be_data(df, selected_dates=None, debug=False):
                                     num = float(val_str)
                                     if 1 <= num <= 5:
                                         entry[metric_key] = num
+                                        metrics_found.append(metric_key)
                             except:
                                 pass
                 
@@ -886,6 +913,15 @@ def process_suivi_be_data(df, selected_dates=None, debug=False):
                 has_data = any(entry.get(m['key']) for m in METRICS)
                 if has_data:
                     entries.append(entry)
+                else:
+                    skipped_players.append(name)
+            
+            if debug:
+                st.write(f"  → {len(entries)} joueurs avec données")
+                if skipped_players and len(skipped_players) <= 5:
+                    st.write(f"  ⚠️ Joueurs sans métriques valides: {skipped_players}")
+                elif skipped_players:
+                    st.write(f"  ⚠️ {len(skipped_players)} joueurs sans métriques valides")
             
             if entries:
                 # Fusionner avec les données existantes ou créer
@@ -910,7 +946,7 @@ def process_suivi_be_data(df, selected_dates=None, debug=False):
                 'players': len(st.session_state.players)
             }
         else:
-            return {'success': False, 'error': "Aucune donnée importée. Vérifiez que les dates sélectionnées contiennent des données."}
+            return {'success': False, 'error': "Aucune donnée importée. Activez le mode debug pour voir les détails du parsing."}
         
     except Exception as e:
         import traceback
@@ -2082,34 +2118,64 @@ def page_import():
         </div>
         """, unsafe_allow_html=True)
         
-        # Étape 1: Scanner les dates disponibles
-        if st.button("🔍 Scanner les dates disponibles", use_container_width=True, key="scan_dates"):
-            try:
-                match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
-                if not match:
-                    st.error("❌ URL invalide")
-                else:
-                    doc_id = match.group(1)
-                    encoded_sheet = urllib.parse.quote(sheet_name)
-                    csv_url = f"https://docs.google.com/spreadsheets/d/{doc_id}/gviz/tq?tqx=out:csv&sheet={encoded_sheet}"
-                    
-                    with st.spinner("📡 Téléchargement..."):
-                        df = pd.read_csv(csv_url, header=None)
-                    
-                    st.success(f"✅ {len(df)} lignes × {len(df.columns)} colonnes")
-                    
-                    with st.spinner("🔍 Analyse des dates..."):
-                        result = process_suivi_be_data(df, selected_dates=None, debug=debug_mode)
-                    
-                    if result['success'] and result.get('mode') == 'list_dates':
-                        st.session_state['suivi_be_dates'] = result['available_dates']
-                        st.session_state['suivi_be_df'] = df
-                        st.success(f"✅ {len(result['available_dates'])} dates trouvées !")
-                    else:
-                        st.error(f"❌ Erreur: {result.get('error', 'Erreur inconnue')}")
+        col_scan1, col_scan2 = st.columns(2)
+        
+        with col_scan1:
+            # Bouton pour voir le contenu brut
+            if st.button("👁️ Voir le contenu brut", use_container_width=True, key="view_suivi"):
+                try:
+                    match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
+                    if match:
+                        doc_id = match.group(1)
+                        encoded_sheet = urllib.parse.quote(sheet_name)
+                        csv_url = f"https://docs.google.com/spreadsheets/d/{doc_id}/gviz/tq?tqx=out:csv&sheet={encoded_sheet}"
                         
-            except Exception as e:
-                st.error(f"❌ Erreur: {str(e)}")
+                        df = pd.read_csv(csv_url, header=None)
+                        st.success(f"✅ {len(df)} lignes × {len(df.columns)} colonnes")
+                        
+                        st.markdown("**Premières lignes (avec index de colonnes):**")
+                        for i in range(min(8, len(df))):
+                            row_vals = []
+                            for j in range(min(20, len(df.columns))):
+                                val = df.iloc[i, j]
+                                if pd.notna(val):
+                                    val_str = str(val)[:15]
+                                    row_vals.append(f"[{j}]`{val_str}`")
+                            st.write(f"**L{i}:** {' | '.join(row_vals)}")
+                        
+                        st.dataframe(df.iloc[:10, :15])
+                except Exception as e:
+                    st.error(f"Erreur: {e}")
+        
+        with col_scan2:
+            # Étape 1: Scanner les dates disponibles
+            if st.button("🔍 Scanner les dates disponibles", use_container_width=True, key="scan_dates"):
+                try:
+                    match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
+                    if not match:
+                        st.error("❌ URL invalide")
+                    else:
+                        doc_id = match.group(1)
+                        encoded_sheet = urllib.parse.quote(sheet_name)
+                        csv_url = f"https://docs.google.com/spreadsheets/d/{doc_id}/gviz/tq?tqx=out:csv&sheet={encoded_sheet}"
+                        
+                        with st.spinner("📡 Téléchargement..."):
+                            df = pd.read_csv(csv_url, header=None)
+                        
+                        st.success(f"✅ {len(df)} lignes × {len(df.columns)} colonnes")
+                        
+                        with st.spinner("🔍 Analyse des dates..."):
+                            result = process_suivi_be_data(df, selected_dates=None, debug=debug_mode)
+                        
+                        if result['success'] and result.get('mode') == 'list_dates':
+                            st.session_state['suivi_be_dates'] = result['available_dates']
+                            st.session_state['suivi_be_df'] = df
+                            st.success(f"✅ {len(result['available_dates'])} dates trouvées !")
+                        else:
+                            st.error(f"❌ Erreur: {result.get('error', 'Erreur inconnue')}")
+                            
+                except Exception as e:
+                    st.error(f"❌ Erreur: {str(e)}")
         
         # Étape 2: Afficher les dates et permettre la sélection
         if 'suivi_be_dates' in st.session_state and st.session_state['suivi_be_dates']:
