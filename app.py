@@ -613,6 +613,20 @@ def get_avatar_gradient(name):
     idx = sum(ord(c) for c in name) % 5 + 1
     return f"avatar-gradient-{idx}"
 
+def fmt_val(val, decimals=1, suffix=""):
+    """Formate une valeur numérique de façon sécurisée"""
+    if val is None:
+        return "-"
+    try:
+        if decimals == 0:
+            return f"{int(val)}{suffix}"
+        elif decimals == 1:
+            return f"{val:.1f}{suffix}"
+        else:
+            return f"{val:.2f}{suffix}"
+    except (TypeError, ValueError):
+        return "-"
+
 # ==================== IMPORT AMÉLIORÉ ====================
 def parse_date_french(text):
     """Parse une date en français - format: 'mardi 6 janvier 2026' ou '6 janvier 2026'"""
@@ -1491,7 +1505,7 @@ def page_dashboard():
         metrics_html = ''.join([
             f'''<div style="text-align:center;min-width:80px;">
                 <div style="font-size:30px;margin-bottom:4px;">{m["icon"]}</div>
-                <div style="font-size:24px;font-weight:bold;color:white;">{team.get(m["key"], 0):.1f if team.get(m["key"]) else "-"}</div>
+                <div style="font-size:24px;font-weight:bold;color:white;">{fmt_val(team.get(m["key"]))}</div>
                 <div style="font-size:11px;color:rgba(255,255,255,0.7);">{m["label"]}</div>
             </div>'''
             for m in METRICS
