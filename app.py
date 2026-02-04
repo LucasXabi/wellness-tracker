@@ -821,30 +821,34 @@ def process_suivi_be_data(df, selected_dates=None, debug=False):
             if debug:
                 st.write(f"📊 Traitement de **{block['date_str']}** (colonnes {start_col}-{end_col})")
             
-            # Mapper les colonnes dans ce bloc
+            # Mapper les colonnes par POSITION relative depuis "Joueur"
+            # Structure: Joueur | Sommeil | Charge | Motivation | HDC | BDC | Moyenne | Remarque | [prochain Joueur]
             header_row_data = df.iloc[header_row_idx]
-            col_indices = {'name': start_col}  # La première colonne est toujours "Joueur"
+            col_indices = {'name': start_col}
             
-            # Parcourir les colonnes du bloc pour trouver les autres en-têtes
-            for j in range(start_col + 1, min(end_col, len(header_row_data))):
-                cell = header_row_data.iloc[j]
-                if pd.notna(cell):
-                    cell_norm = normalize_text(cell)
-                    if 'sommeil' in cell_norm:
-                        col_indices['sleep'] = j
-                    elif 'charge' in cell_norm:
-                        col_indices['mentalLoad'] = j
-                    elif 'motivation' in cell_norm:
-                        col_indices['motivation'] = j
-                    elif 'hdc' in cell_norm:
-                        col_indices['hdcState'] = j
-                    elif 'bdc' in cell_norm:
-                        col_indices['bdcState'] = j
-                    elif 'remarque' in cell_norm or 'commentaire' in cell_norm:
-                        col_indices['remark'] = j
+            # Les en-têtes des métriques sont souvent vides (None) dans le CSV exporté
+            # On mappe par position relative depuis la colonne Joueur
+            col_indices['sleep'] = start_col + 1
+            col_indices['mentalLoad'] = start_col + 2
+            col_indices['motivation'] = start_col + 3
+            col_indices['hdcState'] = start_col + 4
+            col_indices['bdcState'] = start_col + 5
+            # +6 serait Moyenne (on l'ignore)
+            # +7 serait Remarque, mais cherchons-la explicitement
+            
+            # Chercher la colonne Remarque (peut être à +6 ou +7)
+            for offset in range(6, 10):
+                check_col = start_col + offset
+                if check_col < len(header_row_data):
+                    cell = header_row_data.iloc[check_col]
+                    if pd.notna(cell):
+                        cell_norm = normalize_text(cell)
+                        if 'remarque' in cell_norm or 'commentaire' in cell_norm:
+                            col_indices['remark'] = check_col
+                            break
             
             if debug:
-                st.write(f"  Colonnes mappées: {list(col_indices.keys())}")
+                st.write(f"  Colonnes mappées (par position): name={col_indices.get('name')}, sleep={col_indices.get('sleep')}, mentalLoad={col_indices.get('mentalLoad')}, motivation={col_indices.get('motivation')}, hdcState={col_indices.get('hdcState')}, bdcState={col_indices.get('bdcState')}, remark={col_indices.get('remark')}")
             
             # Extraire les données des joueurs
             entries = []
