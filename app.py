@@ -688,6 +688,237 @@ def find_column_index(row, keywords, debug_info=None):
     return None
 
 
+def detect_date_blocks(df, debug=False):
+    """
+    Détecte les blocs de dates dans un fichier "Suivi BE" où les jours sont côte à côte.
+    Retourne une liste de blocs avec leur position et date.
+    """
+    blocks = []
+    
+    # Chercher les dates dans les premières lignes (généralement ligne 2-3)
+    for row_idx in range(min(5, len(df))):
+        row = df.iloc[row_idx]
+        col_idx = 0
+        
+        while col_idx < len(row):
+            cell = row.iloc[col_idx]
+            if pd.notna(cell):
+                parsed_date = parse_date_french(str(cell))
+                if parsed_date:
+                    # Trouver la fin du bloc (prochaine date ou fin de ligne)
+                    end_col = col_idx + 1
+                    while end_col < len(row):
+                        next_cell = row.iloc[end_col]
+                        if pd.notna(next_cell) and parse_date_french(str(next_cell)):
+                            break
+                        end_col += 1
+                    
+                    blocks.append({
+                        'date': parsed_date,
+                        'date_str': str(cell),
+                        'start_col': col_idx,
+                        'end_col': end_col,
+                        'date_row': row_idx
+                    })
+                    col_idx = end_col
+                    continue
+            col_idx += 1
+    
+    if debug and blocks:
+        import streamlit as st
+        st.write(f"📅 {len(blocks)} blocs de dates détectés")
+        for b in blocks[:5]:
+            st.write(f"  • {b['date_str']} (colonnes {b['start_col']}-{b['end_col']})")
+    
+    return blocks
+
+
+def process_suivi_be_data(df, selected_dates=None, debug=False):
+    """
+    Traite les données du format "Suivi BE" avec les jours côte à côte.
+    
+    Structure attendue :
+    - Ligne avec dates (ex: "lundi 23 juin 2025" | "mardi 24 juin 2025")
+    - Ligne d'en-têtes pour chaque bloc
+    - Ligne EQUIPE
+    - Données joueurs
+    """
+    try:
+        import streamlit as st
+        
+        if debug:
+            st.write("### 🔍 Analyse du fichier Suivi BE")
+            st.write(f"**Dimensions:** {len(df)} lignes × {len(df.columns)} colonnes")
+        
+        # 1. Détecter les blocs de dates
+        blocks = detect_date_blocks(df, debug)
+        
+        if not blocks:
+            return {'success': False, 'error': "Aucune date trouvée dans le fichier. Format attendu: dates en ligne 2 ou 3."}
+        
+        # Si aucune date sélectionnée, retourner la liste des dates disponibles
+        if selected_dates is None:
+            return {
+                'success': True,
+                'mode': 'list_dates',
+                'available_dates': [{'date': b['date'], 'label': b['date_str']} for b in blocks]
+            }
+        
+        # 2. Trouver la ligne d'en-têtes (contient "Joueur" ou "Sommeil")
+        header_row = None
+        for i in range(min(10, len(df))):
+            row = df.iloc[i]
+            row_text = ' '.join([str(x).lower() for x in row if pd.notna(x)])
+            if 'joueur' in row_text and ('sommeil' in row_text or 'motivation' in row_text):
+                header_row = i
+                if debug:
+                    st.success(f"📋 En-têtes trouvés ligne {i}")
+                break
+        
+        if header_row is None:
+            return {'success': False, 'error': "Ligne d'en-têtes non trouvée."}
+        
+        # 3. Traiter chaque bloc sélectionné
+        total_entries = 0
+        players_created = 0
+        dates_imported = []
+        
+        for block in blocks:
+            if block['date'] not in selected_dates:
+                continue
+            
+            date_key = block['date']
+            start_col = block['start_col']
+            end_col = block['end_col']
+            
+            if debug:
+                st.write(f"📊 Traitement de {block['date_str']} (colonnes {start_col}-{end_col})")
+            
+            # Mapper les colonnes dans ce bloc
+            header_row_data = df.iloc[header_row]
+            col_indices = {}
+            
+            for j in range(start_col, min(end_col, len(header_row_data))):
+                cell = header_row_data.iloc[j]
+                if pd.notna(cell):
+                    cell_norm = normalize_text(cell)
+                    if 'joueur' in cell_norm or cell_norm == 'nom':
+                        col_indices['name'] = j
+                    elif 'sommeil' in cell_norm:
+                        col_indices['sleep'] = j
+                    elif 'charge' in cell_norm and 'mental' in cell_norm:
+                        col_indices['mentalLoad'] = j
+                    elif 'motivation' in cell_norm:
+                        col_indices['motivation'] = j
+                    elif 'hdc' in cell_norm:
+                        col_indices['hdcState'] = j
+                    elif 'bdc' in cell_norm:
+                        col_indices['bdcState'] = j
+                    elif 'remarque' in cell_norm or 'commentaire' in cell_norm:
+                        col_indices['remark'] = j
+            
+            if 'name' not in col_indices:
+                if debug:
+                    st.warning(f"⚠️ Colonne 'Joueur' non trouvée pour {block['date_str']}")
+                continue
+            
+            # Extraire les données des joueurs
+            entries = []
+            
+            for row_idx in range(header_row + 1, len(df)):
+                row = df.iloc[row_idx]
+                
+                # Récupérer le nom
+                name_col = col_indices.get('name')
+                if name_col >= len(row):
+                    continue
+                
+                name = row.iloc[name_col]
+                if pd.isna(name):
+                    continue
+                
+                name = str(name).strip()
+                
+                # Ignorer lignes vides ou EQUIPE
+                if not name or len(name) < 2:
+                    continue
+                if name.upper() in ['EQUIPE', 'ÉQUIPE', 'TOTAL', 'MOYENNE']:
+                    continue
+                if name.lower() in ['joueur', 'nom', 'nan', 'none']:
+                    continue
+                
+                # Créer le joueur s'il n'existe pas
+                if not any(p['name'] == name for p in st.session_state.players):
+                    st.session_state.players.append({
+                        'id': f"p_{len(st.session_state.players) + 1}_{datetime.now().timestamp():.0f}",
+                        'name': name,
+                        'position': 'Pilier gauche',
+                        'status': 'Apte',
+                        'targetWeight': 95
+                    })
+                    players_created += 1
+                
+                entry = {'name': name}
+                
+                # Métriques (1-5)
+                for metric_key in ['sleep', 'mentalLoad', 'motivation', 'hdcState', 'bdcState']:
+                    if metric_key in col_indices and col_indices[metric_key] < len(row):
+                        val = row.iloc[col_indices[metric_key]]
+                        if pd.notna(val):
+                            try:
+                                val_str = str(val).replace(',', '.').replace(' ', '')
+                                if val_str and val_str not in ['#DIV/0!', '#N/A', '#VALUE!', '-', '']:
+                                    num = float(val_str)
+                                    if 1 <= num <= 5:
+                                        entry[metric_key] = num
+                            except:
+                                pass
+                
+                # Remarque
+                if 'remark' in col_indices and col_indices['remark'] < len(row):
+                    val = row.iloc[col_indices['remark']]
+                    if pd.notna(val):
+                        remark = str(val).strip()
+                        if remark and remark.lower() not in ['nan', 'none', '', '#n/a']:
+                            entry['remark'] = remark
+                
+                # N'ajouter que si on a au moins une métrique
+                has_data = any(entry.get(m['key']) for m in METRICS)
+                if has_data:
+                    entries.append(entry)
+            
+            if entries:
+                # Fusionner avec les données existantes ou créer
+                if date_key in st.session_state.data:
+                    existing = {e['name']: e for e in st.session_state.data[date_key]}
+                    for entry in entries:
+                        existing[entry['name']] = entry
+                    st.session_state.data[date_key] = list(existing.values())
+                else:
+                    st.session_state.data[date_key] = entries
+                
+                total_entries += len(entries)
+                dates_imported.append(block['date_str'])
+        
+        if dates_imported:
+            return {
+                'success': True,
+                'mode': 'imported',
+                'dates_imported': dates_imported,
+                'entries': total_entries,
+                'new_players': players_created,
+                'players': len(st.session_state.players)
+            }
+        else:
+            return {'success': False, 'error': "Aucune donnée importée. Vérifiez que les dates sélectionnées contiennent des données."}
+        
+    except Exception as e:
+        import traceback
+        if debug:
+            st.error(f"Erreur: {traceback.format_exc()}")
+        return {'success': False, 'error': str(e)}
+
+
 def process_imported_data(df, debug=False):
     """
     Traite les données importées depuis Google Sheets.
@@ -1760,44 +1991,99 @@ def page_import():
         help="Collez l'URL complète de votre Google Sheet (doit être partagé en lecture publique)"
     )
     
-    sheet_name = st.text_input(
-        "Nom de l'onglet", 
-        value="Bien-être", 
-        help="Nom exact de l'onglet contenant les données wellness"
-    )
+    # Choix du mode d'import
+    col_mode1, col_mode2 = st.columns(2)
+    with col_mode1:
+        import_mode = st.radio(
+            "Mode d'import",
+            ["📅 Dernier jour (Bien-être)", "📆 Historique (Suivi BE)"],
+            horizontal=True,
+            help="Choisissez le type de données à importer"
+        )
+    
+    with col_mode2:
+        if import_mode == "📅 Dernier jour (Bien-être)":
+            sheet_name = st.text_input("Nom de l'onglet", value="Bien-être", key="sheet_bienetre")
+        else:
+            sheet_name = st.text_input("Nom de l'onglet", value="Suivi BE", key="sheet_suivi")
     
     debug_mode = st.checkbox("🔧 Mode debug (affiche les détails du parsing)", value=False)
     
-    col1, col2 = st.columns(2)
+    # === MODE BIEN-ÊTRE (dernier jour) ===
+    if import_mode == "📅 Dernier jour (Bien-être)":
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            if st.button("👁️ Voir le contenu brut", use_container_width=True, key="view_bienetre"):
+                try:
+                    match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
+                    if match:
+                        doc_id = match.group(1)
+                        encoded_sheet = urllib.parse.quote(sheet_name)
+                        csv_url = f"https://docs.google.com/spreadsheets/d/{doc_id}/gviz/tq?tqx=out:csv&sheet={encoded_sheet}"
+                        
+                        df = pd.read_csv(csv_url, header=None)
+                        st.success(f"✅ {len(df)} lignes × {len(df.columns)} colonnes")
+                        
+                        st.markdown("**Premières lignes (avec index de colonnes):**")
+                        for i in range(min(10, len(df))):
+                            row_vals = []
+                            for j in range(min(12, len(df.columns))):
+                                val = df.iloc[i, j]
+                                if pd.notna(val):
+                                    row_vals.append(f"[{j}]`{val}`")
+                            st.write(f"**L{i}:** {' | '.join(row_vals)}")
+                        
+                        st.dataframe(df.head(15))
+                except Exception as e:
+                    st.error(f"Erreur: {e}")
+        
+        with col2:
+            if st.button("📥 Importer les données", type="primary", use_container_width=True, key="import_bienetre"):
+                try:
+                    match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
+                    if not match:
+                        st.error("❌ URL invalide")
+                    else:
+                        doc_id = match.group(1)
+                        encoded_sheet = urllib.parse.quote(sheet_name)
+                        csv_url = f"https://docs.google.com/spreadsheets/d/{doc_id}/gviz/tq?tqx=out:csv&sheet={encoded_sheet}"
+                        
+                        with st.spinner("📡 Téléchargement..."):
+                            df = pd.read_csv(csv_url, header=None)
+                        
+                        st.success(f"✅ {len(df)} lignes téléchargées")
+                        
+                        with st.spinner("🔄 Traitement..."):
+                            result = process_imported_data(df, debug=debug_mode)
+                        
+                        if result['success']:
+                            st.balloons()
+                            cols_found = result.get('columns_found', [])
+                            st.success(f"""
+                            ✅ **Import réussi !**
+                            - 📅 Date: **{format_date(result['date'], 'full')}**
+                            - 👥 {result['players']} joueurs ({result['new_players']} nouveaux)
+                            - 📊 {result['entries']} entrées
+                            - 🔍 Colonnes détectées: {', '.join(cols_found)}
+                            """)
+                        else:
+                            st.error(f"❌ Erreur: {result['error']}")
+                            
+                except Exception as e:
+                    st.error(f"❌ Erreur: {str(e)}")
     
-    with col1:
-        if st.button("👁️ Voir le contenu brut", use_container_width=True):
-            try:
-                match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
-                if match:
-                    doc_id = match.group(1)
-                    encoded_sheet = urllib.parse.quote(sheet_name)
-                    csv_url = f"https://docs.google.com/spreadsheets/d/{doc_id}/gviz/tq?tqx=out:csv&sheet={encoded_sheet}"
-                    
-                    df = pd.read_csv(csv_url, header=None)
-                    st.success(f"✅ {len(df)} lignes × {len(df.columns)} colonnes")
-                    
-                    st.markdown("**Premières lignes (avec index de colonnes):**")
-                    # Afficher avec index de colonnes
-                    for i in range(min(10, len(df))):
-                        row_vals = []
-                        for j in range(min(12, len(df.columns))):
-                            val = df.iloc[i, j]
-                            if pd.notna(val):
-                                row_vals.append(f"[{j}]`{val}`")
-                        st.write(f"**L{i}:** {' | '.join(row_vals)}")
-                    
-                    st.dataframe(df.head(15))
-            except Exception as e:
-                st.error(f"Erreur: {e}")
-    
-    with col2:
-        if st.button("📥 Importer les données", type="primary", use_container_width=True):
+    # === MODE SUIVI BE (historique) ===
+    else:
+        st.markdown("""
+        <div style="background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.3);border-radius:8px;padding:12px;margin-bottom:16px;">
+            <div style="color:#60a5fa;font-weight:600;">📆 Import historique</div>
+            <div style="color:#94a3b8;font-size:13px;">Les données de l'onglet "Suivi BE" contiennent plusieurs jours côte à côte. Sélectionnez les dates à importer.</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Étape 1: Scanner les dates disponibles
+        if st.button("🔍 Scanner les dates disponibles", use_container_width=True, key="scan_dates"):
             try:
                 match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
                 if not match:
@@ -1810,48 +2096,110 @@ def page_import():
                     with st.spinner("📡 Téléchargement..."):
                         df = pd.read_csv(csv_url, header=None)
                     
-                    st.success(f"✅ {len(df)} lignes téléchargées")
+                    st.success(f"✅ {len(df)} lignes × {len(df.columns)} colonnes")
                     
-                    with st.spinner("🔄 Traitement..."):
-                        result = process_imported_data(df, debug=debug_mode)
+                    with st.spinner("🔍 Analyse des dates..."):
+                        result = process_suivi_be_data(df, selected_dates=None, debug=debug_mode)
                     
-                    if result['success']:
-                        st.balloons()
-                        cols_found = result.get('columns_found', [])
-                        st.success(f"""
-                        ✅ **Import réussi !**
-                        - 📅 Date: **{format_date(result['date'], 'full')}**
-                        - 👥 {result['players']} joueurs ({result['new_players']} nouveaux)
-                        - 📊 {result['entries']} entrées
-                        - 🔍 Colonnes détectées: {', '.join(cols_found)}
-                        """)
+                    if result['success'] and result.get('mode') == 'list_dates':
+                        st.session_state['suivi_be_dates'] = result['available_dates']
+                        st.session_state['suivi_be_df'] = df
+                        st.success(f"✅ {len(result['available_dates'])} dates trouvées !")
                     else:
-                        st.error(f"❌ Erreur: {result['error']}")
+                        st.error(f"❌ Erreur: {result.get('error', 'Erreur inconnue')}")
                         
             except Exception as e:
                 st.error(f"❌ Erreur: {str(e)}")
+        
+        # Étape 2: Afficher les dates et permettre la sélection
+        if 'suivi_be_dates' in st.session_state and st.session_state['suivi_be_dates']:
+            available_dates = st.session_state['suivi_be_dates']
+            
+            st.markdown(f"### 📅 {len(available_dates)} dates disponibles")
+            
+            # Options de sélection rapide
+            col_sel1, col_sel2, col_sel3 = st.columns(3)
+            with col_sel1:
+                if st.button("✅ Tout sélectionner", use_container_width=True):
+                    st.session_state['selected_suivi_dates'] = [d['date'] for d in available_dates]
+                    st.rerun()
+            with col_sel2:
+                if st.button("❌ Tout désélectionner", use_container_width=True):
+                    st.session_state['selected_suivi_dates'] = []
+                    st.rerun()
+            with col_sel3:
+                if st.button("📅 7 derniers jours", use_container_width=True):
+                    st.session_state['selected_suivi_dates'] = [d['date'] for d in available_dates[-7:]]
+                    st.rerun()
+            
+            # Multi-select des dates
+            date_options = {d['date']: d['label'] for d in available_dates}
+            default_selection = st.session_state.get('selected_suivi_dates', [])
+            
+            selected = st.multiselect(
+                "Sélectionnez les dates à importer",
+                options=list(date_options.keys()),
+                default=[d for d in default_selection if d in date_options],
+                format_func=lambda x: date_options.get(x, x),
+                key="date_multiselect"
+            )
+            
+            st.session_state['selected_suivi_dates'] = selected
+            
+            # Bouton d'import
+            if selected:
+                st.markdown(f"**{len(selected)} date(s) sélectionnée(s)**")
+                
+                if st.button(f"📥 Importer {len(selected)} jour(s)", type="primary", use_container_width=True, key="import_suivi"):
+                    try:
+                        df = st.session_state.get('suivi_be_df')
+                        if df is None:
+                            st.error("❌ Données non chargées. Veuillez rescanner les dates.")
+                        else:
+                            with st.spinner(f"🔄 Import de {len(selected)} jours..."):
+                                result = process_suivi_be_data(df, selected_dates=selected, debug=debug_mode)
+                            
+                            if result['success'] and result.get('mode') == 'imported':
+                                st.balloons()
+                                st.success(f"""
+                                ✅ **Import réussi !**
+                                - 📅 Jours importés: **{len(result['dates_imported'])}**
+                                - 👥 {result['players']} joueurs ({result['new_players']} nouveaux)
+                                - 📊 {result['entries']} entrées au total
+                                """)
+                                
+                                with st.expander("📋 Détail des dates importées"):
+                                    for d in result['dates_imported']:
+                                        st.write(f"• {d}")
+                                
+                                # Nettoyer le cache
+                                del st.session_state['suivi_be_dates']
+                                del st.session_state['suivi_be_df']
+                            else:
+                                st.error(f"❌ Erreur: {result.get('error', 'Erreur inconnue')}")
+                                
+                    except Exception as e:
+                        st.error(f"❌ Erreur: {str(e)}")
+            else:
+                st.info("👆 Sélectionnez au moins une date pour importer")
     
     st.markdown("</div>", unsafe_allow_html=True)
     
     # Info box sur le format attendu
-    with st.expander("ℹ️ Format attendu du Google Sheet"):
+    with st.expander("ℹ️ Formats attendus"):
         st.markdown("""
-        Le fichier doit contenir :
-        1. **Une ligne avec la date** (ex: "mardi 6 janvier 2026")
-        2. **Une ligne d'en-têtes** avec au minimum : `Joueur`, `Poids`, `Sommeil`, `Charge mentale`, `Motivation`
-        3. **Les données des joueurs** (une ligne par joueur)
+        ### 📅 Format "Bien-être" (dernier jour)
+        - **Ligne 1-2**: Date (ex: "mardi 6 janvier 2026")
+        - **Ligne 3**: En-têtes (Joueur, Poids, Sommeil, Charge mentale, Motivation, HDC, BDC, Remarque)
+        - **Ligne 4**: EQUIPE (ignorée)
+        - **Lignes 5+**: Données des joueurs
         
-        **Colonnes reconnues :**
-        - `Joueur` ou `Nom` → Nom du joueur
-        - `Poids` → Poids en kg
-        - `Sommeil` → Note de 1 à 5
-        - `Charge mentale` ou `Charge` → Note de 1 à 5
-        - `Motivation` → Note de 1 à 5
-        - `HDC` ou `état général HDC` → Note de 1 à 5
-        - `BDC` ou `état général BDC` → Note de 1 à 5
-        - `Remarque` ou `Commentaire` → Texte libre
+        ### 📆 Format "Suivi BE" (historique)
+        - Les jours sont **côte à côte horizontalement**
+        - Chaque bloc contient: Date → En-têtes → EQUIPE → Joueurs
+        - Pas de colonne Poids (seulement les métriques wellness)
         
-        **Lignes ignorées :** `EQUIPE`, `TOTAL`, `MOYENNE`
+        **Colonnes reconnues :** Joueur, Sommeil, Charge mentale, Motivation, HDC, BDC, Remarque
         """)
     
     st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
