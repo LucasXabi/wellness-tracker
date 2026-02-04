@@ -1,6 +1,6 @@
 """
-🏉 Rugby Wellness Tracker - Version Ultra Premium
-Application Streamlit complète avec design moderne et fonctionnalités avancées
+🏉 Rugby Wellness Tracker - Version Ultra Premium FIXED
+Application Streamlit complète avec parsing amélioré pour Google Sheets
 """
 
 import streamlit as st
@@ -613,9 +613,11 @@ def get_avatar_gradient(name):
     idx = sum(ord(c) for c in name) % 5 + 1
     return f"avatar-gradient-{idx}"
 
-# ==================== IMPORT ADAPTÉ À LA STRUCTURE EXACTE ====================
+# ==================== IMPORT AMÉLIORÉ ====================
 def parse_date_french(text):
     """Parse une date en français - format: 'mardi 6 janvier 2026' ou '6 janvier 2026'"""
+    if pd.isna(text):
+        return None
     text = str(text).lower().strip()
     
     # Format: "mardi 6 janvier 2026" ou "6 janvier 2026"
@@ -636,9 +638,47 @@ def parse_date_french(text):
     
     return None
 
+
+def normalize_text(text):
+    """Normalise le texte pour la comparaison (supprime accents, lowercase)"""
+    if pd.isna(text):
+        return ""
+    text = str(text).lower().strip()
+    # Remplacements des caractères accentués
+    replacements = {
+        'é': 'e', 'è': 'e', 'ê': 'e', 'ë': 'e',
+        'à': 'a', 'â': 'a', 'ä': 'a',
+        'ù': 'u', 'û': 'u', 'ü': 'u',
+        'ô': 'o', 'ö': 'o',
+        'î': 'i', 'ï': 'i',
+        'ç': 'c'
+    }
+    for old, new in replacements.items():
+        text = text.replace(old, new)
+    return text
+
+
+def find_column_index(row, keywords, debug_info=None):
+    """
+    Trouve l'index d'une colonne en cherchant des mots-clés.
+    keywords: liste de mots-clés possibles (premier trouvé gagne)
+    """
+    for j, cell in enumerate(row):
+        if pd.notna(cell):
+            cell_norm = normalize_text(cell)
+            for kw in keywords:
+                if kw in cell_norm:
+                    if debug_info is not None:
+                        debug_info.append(f"  → '{kw}' trouvé en colonne {j}: '{cell}'")
+                    return j
+    return None
+
+
 def process_imported_data(df, debug=False):
     """
     Traite les données importées depuis Google Sheets.
+    Version améliorée avec détection flexible des en-têtes.
+    
     Structure attendue :
     - Ligne avec la date (ex: "mardi 6 janvier 2026")
     - Ligne d'en-têtes : Joueur, Poids, Sommeil, Charge mentale, Motivation, état général HDC, état général BDC, Moyenne, ..., Remarque
@@ -646,9 +686,13 @@ def process_imported_data(df, debug=False):
     - Données des joueurs
     """
     try:
+        debug_info = [] if debug else None
+        
         if debug:
-            st.write("### 🔍 Analyse du fichier")
+            st.write("### 🔍 Analyse détaillée du fichier")
             st.write(f"**Dimensions:** {len(df)} lignes × {len(df.columns)} colonnes")
+            st.write("**Aperçu des premières lignes:**")
+            st.dataframe(df.head(10))
         
         # 1. Chercher la date dans les premières lignes
         date_found = None
@@ -660,7 +704,7 @@ def process_imported_data(df, debug=False):
                     if parsed:
                         date_found = parsed
                         if debug:
-                            st.success(f"📅 Date trouvée ligne {i}: **{format_date(date_found, 'full')}**")
+                            st.success(f"📅 Date trouvée ligne {i}, colonne {j}: **{format_date(date_found, 'full')}** (valeur: '{cell}')")
                         break
             if date_found:
                 break
@@ -668,60 +712,101 @@ def process_imported_data(df, debug=False):
         if not date_found:
             date_found = datetime.now().strftime('%Y-%m-%d')
             if debug:
-                st.warning(f"⚠️ Date non trouvée, utilisation: {date_found}")
+                st.warning(f"⚠️ Date non trouvée, utilisation de la date du jour: {date_found}")
         
-        # 2. Chercher la ligne d'en-têtes (contient "Joueur" et "Poids" ou "Sommeil")
+        # 2. Chercher la ligne d'en-têtes avec plusieurs stratégies
         header_row = None
         col_indices = {}
         
-        for i in range(min(15, len(df))):
+        # Mots-clés pour détecter la ligne d'en-têtes
+        header_keywords = ['joueur', 'nom', 'poids', 'sommeil', 'motivation', 'charge']
+        
+        for i in range(min(20, len(df))):
             row = df.iloc[i]
-            row_str = ' '.join([str(x).lower() for x in row if pd.notna(x)])
+            row_values = [str(x).lower().strip() for x in row if pd.notna(x)]
+            row_text = ' '.join(row_values)
             
-            # Chercher si cette ligne contient les en-têtes
-            has_joueur = any('joueur' in str(x).lower() for x in row if pd.notna(x))
-            has_poids = any('poids' in str(x).lower() for x in row if pd.notna(x))
-            has_sommeil = any('sommeil' in str(x).lower() for x in row if pd.notna(x))
+            if debug:
+                debug_info.append(f"\n**Ligne {i}:** {row_values[:8]}")
             
-            if has_joueur and (has_poids or has_sommeil):
+            # Compter combien de mots-clés d'en-tête sont présents
+            keywords_found = sum(1 for kw in header_keywords if kw in row_text)
+            
+            if debug:
+                debug_info.append(f"  Keywords trouvés: {keywords_found}")
+            
+            # Si on trouve au moins 3 mots-clés, c'est probablement l'en-tête
+            if keywords_found >= 3:
                 header_row = i
                 if debug:
-                    st.success(f"📋 En-tête trouvé ligne {i}")
+                    st.success(f"📋 En-tête détecté ligne {i} ({keywords_found} mots-clés)")
                 
-                # Mapper les colonnes
-                for j, cell in enumerate(row):
-                    if pd.notna(cell):
-                        cell_lower = str(cell).lower().strip()
-                        if 'joueur' in cell_lower or cell_lower == 'nom':
-                            col_indices['name'] = j
-                        elif 'poids' in cell_lower:
-                            col_indices['weight'] = j
-                        elif 'sommeil' in cell_lower:
-                            col_indices['sleep'] = j
-                        elif 'charge' in cell_lower and 'mental' in cell_lower:
-                            col_indices['mentalLoad'] = j
-                        elif 'motivation' in cell_lower:
-                            col_indices['motivation'] = j
-                        elif 'hdc' in cell_lower or ('état' in cell_lower and 'hdc' in row_str):
-                            col_indices['hdcState'] = j
-                        elif 'bdc' in cell_lower or ('état' in cell_lower and 'bdc' in row_str):
-                            col_indices['bdcState'] = j
-                        elif 'remarque' in cell_lower or 'commentaire' in cell_lower:
-                            col_indices['remark'] = j
+                # Mapper les colonnes avec des recherches flexibles
+                col_indices['name'] = find_column_index(row, ['joueur', 'nom'], debug_info)
+                col_indices['weight'] = find_column_index(row, ['poids', 'weight'], debug_info)
+                col_indices['sleep'] = find_column_index(row, ['sommeil', 'sleep'], debug_info)
+                col_indices['mentalLoad'] = find_column_index(row, ['charge mentale', 'charge', 'mental'], debug_info)
+                col_indices['motivation'] = find_column_index(row, ['motivation'], debug_info)
+                col_indices['hdcState'] = find_column_index(row, ['hdc', 'etat general hdc', 'etat hdc'], debug_info)
+                col_indices['bdcState'] = find_column_index(row, ['bdc', 'etat general bdc', 'etat bdc'], debug_info)
+                col_indices['remark'] = find_column_index(row, ['remarque', 'commentaire', 'note'], debug_info)
+                
+                # Filtrer les None
+                col_indices = {k: v for k, v in col_indices.items() if v is not None}
                 break
         
+        if debug and debug_info:
+            with st.expander("🔧 Détails du parsing"):
+                for line in debug_info:
+                    st.write(line)
+        
         if header_row is None:
-            return {'success': False, 'error': "Ligne d'en-tête non trouvée. Assurez-vous que le fichier contient une ligne avec 'Joueur', 'Poids', 'Sommeil', etc."}
+            # Stratégie de fallback: chercher une ligne avec "Joueur" ou "JOUEUR"
+            for i in range(min(20, len(df))):
+                row = df.iloc[i]
+                for j, cell in enumerate(row):
+                    if pd.notna(cell) and normalize_text(cell) in ['joueur', 'nom']:
+                        header_row = i
+                        col_indices['name'] = j
+                        if debug:
+                            st.warning(f"🔄 Fallback: en-tête trouvé ligne {i} via 'Joueur'")
+                        break
+                if header_row is not None:
+                    break
+        
+        if header_row is None:
+            return {'success': False, 'error': "Ligne d'en-tête non trouvée. Le fichier doit contenir une ligne avec 'Joueur', 'Poids', 'Sommeil', etc."}
         
         if 'name' not in col_indices:
-            return {'success': False, 'error': "Colonne 'Joueur' non trouvée dans les en-têtes."}
+            return {'success': False, 'error': "Colonne 'Joueur' non trouvée. Vérifiez que la colonne des noms est présente."}
         
         if debug:
             st.write(f"**Colonnes mappées:** {col_indices}")
         
-        # 3. Extraire les données (lignes après l'en-tête)
+        # 3. Si on n'a pas trouvé toutes les colonnes de métriques, essayer de les déduire par position
+        if len([k for k in col_indices if k in ['sleep', 'mentalLoad', 'motivation', 'hdcState', 'bdcState']]) < 3:
+            if debug:
+                st.warning("⚠️ Peu de colonnes métriques trouvées, tentative de mapping par position...")
+            
+            # Supposer un ordre standard après 'name' et 'weight'
+            name_col = col_indices.get('name', 0)
+            weight_col = col_indices.get('weight', name_col + 1)
+            
+            # Ordre standard: Poids, Sommeil, Charge mentale, Motivation, HDC, BDC
+            expected_order = ['weight', 'sleep', 'mentalLoad', 'motivation', 'hdcState', 'bdcState']
+            current_col = name_col + 1
+            
+            for metric in expected_order:
+                if metric not in col_indices:
+                    col_indices[metric] = current_col
+                    if debug:
+                        st.write(f"  → {metric} assigné à la colonne {current_col}")
+                current_col += 1
+        
+        # 4. Extraire les données (lignes après l'en-tête)
         entries = []
         players_created = 0
+        skipped_rows = []
         
         for row_idx in range(header_row + 1, len(df)):
             row = df.iloc[row_idx]
@@ -740,9 +825,19 @@ def process_imported_data(df, debug=False):
             # Ignorer lignes vides, EQUIPE, ou non-joueurs
             if not name or len(name) < 2:
                 continue
-            if name.upper() in ['EQUIPE', 'TOTAL', 'MOYENNE', 'AVERAGE']:
+            name_upper = name.upper()
+            if name_upper in ['EQUIPE', 'ÉQUIPE', 'TOTAL', 'MOYENNE', 'AVERAGE', 'TEAM']:
+                if debug:
+                    skipped_rows.append(f"Ligne {row_idx}: '{name}' (ligne équipe)")
                 continue
-            if name.lower() in ['joueur', 'nom', 'nan', 'none']:
+            if name.lower() in ['joueur', 'nom', 'nan', 'none', 'player']:
+                continue
+            
+            # Ignorer les lignes qui semblent être des erreurs Excel (#DIV/0!, etc.)
+            row_values = [str(x) for x in row if pd.notna(x)]
+            if all('#' in v or 'DIV' in v.upper() for v in row_values[1:] if v):
+                if debug:
+                    skipped_rows.append(f"Ligne {row_idx}: '{name}' (erreurs Excel)")
                 continue
             
             # Créer le joueur s'il n'existe pas
@@ -759,11 +854,12 @@ def process_imported_data(df, debug=False):
             entry = {'name': name}
             
             # Poids
-            if 'weight' in col_indices:
+            if 'weight' in col_indices and col_indices['weight'] < len(row):
                 val = row.iloc[col_indices['weight']]
                 if pd.notna(val):
                     try:
-                        num = float(str(val).replace(',', '.'))
+                        # Gérer les formats avec virgule
+                        num = float(str(val).replace(',', '.').replace(' ', ''))
                         if 40 <= num <= 200:
                             entry['weight'] = num
                     except:
@@ -771,25 +867,38 @@ def process_imported_data(df, debug=False):
             
             # Métriques (1-5)
             for metric_key in ['sleep', 'mentalLoad', 'motivation', 'hdcState', 'bdcState']:
-                if metric_key in col_indices:
+                if metric_key in col_indices and col_indices[metric_key] < len(row):
                     val = row.iloc[col_indices[metric_key]]
                     if pd.notna(val):
                         try:
-                            num = float(str(val).replace(',', '.'))
-                            if 1 <= num <= 5:
-                                entry[metric_key] = num
+                            # Gérer divers formats
+                            val_str = str(val).replace(',', '.').replace(' ', '')
+                            if val_str and val_str not in ['#DIV/0!', '#N/A', '#VALUE!', '-', '']:
+                                num = float(val_str)
+                                if 1 <= num <= 5:
+                                    entry[metric_key] = num
                         except:
                             pass
             
             # Remarque
-            if 'remark' in col_indices:
+            if 'remark' in col_indices and col_indices['remark'] < len(row):
                 val = row.iloc[col_indices['remark']]
                 if pd.notna(val):
                     remark = str(val).strip()
-                    if remark and remark.lower() not in ['nan', 'none', '']:
+                    if remark and remark.lower() not in ['nan', 'none', '', '#n/a']:
                         entry['remark'] = remark
             
-            entries.append(entry)
+            # N'ajouter que si on a au moins le nom et le poids ou une métrique
+            has_data = entry.get('weight') or any(entry.get(m['key']) for m in METRICS)
+            if has_data:
+                entries.append(entry)
+            elif debug:
+                skipped_rows.append(f"Ligne {row_idx}: '{name}' (pas de données)")
+        
+        if debug and skipped_rows:
+            with st.expander(f"⏭️ {len(skipped_rows)} lignes ignorées"):
+                for r in skipped_rows:
+                    st.write(r)
         
         if entries:
             st.session_state.data[date_found] = entries
@@ -798,12 +907,17 @@ def process_imported_data(df, debug=False):
                 'date': date_found,
                 'players': len(st.session_state.players),
                 'entries': len(entries),
-                'new_players': players_created
+                'new_players': players_created,
+                'columns_found': list(col_indices.keys())
             }
         else:
-            return {'success': False, 'error': "Aucune donnée de joueur trouvée après l'en-tête."}
+            return {'success': False, 'error': f"Aucune donnée de joueur valide trouvée. {len(skipped_rows)} lignes ont été ignorées. Activez le mode debug pour plus de détails."}
         
     except Exception as e:
+        import traceback
+        error_detail = traceback.format_exc()
+        if debug:
+            st.error(f"Erreur détaillée:\n{error_detail}")
         return {'success': False, 'error': str(e)}
 
 
@@ -1638,7 +1752,7 @@ def page_import():
         help="Nom exact de l'onglet contenant les données wellness"
     )
     
-    debug_mode = st.checkbox("🔧 Mode debug", value=False, help="Affiche les détails du parsing")
+    debug_mode = st.checkbox("🔧 Mode debug (affiche les détails du parsing)", value=False)
     
     col1, col2 = st.columns(2)
     
@@ -1654,10 +1768,15 @@ def page_import():
                     df = pd.read_csv(csv_url, header=None)
                     st.success(f"✅ {len(df)} lignes × {len(df.columns)} colonnes")
                     
-                    st.markdown("**Premières lignes:**")
-                    for i in range(min(8, len(df))):
-                        row_vals = [f"`{df.iloc[i, j]}`" for j in range(min(10, len(df.columns))) if pd.notna(df.iloc[i, j])]
-                        st.write(f"**Ligne {i}:** {' | '.join(row_vals)}")
+                    st.markdown("**Premières lignes (avec index de colonnes):**")
+                    # Afficher avec index de colonnes
+                    for i in range(min(10, len(df))):
+                        row_vals = []
+                        for j in range(min(12, len(df.columns))):
+                            val = df.iloc[i, j]
+                            if pd.notna(val):
+                                row_vals.append(f"[{j}]`{val}`")
+                        st.write(f"**L{i}:** {' | '.join(row_vals)}")
                     
                     st.dataframe(df.head(15))
             except Exception as e:
@@ -1684,11 +1803,13 @@ def page_import():
                     
                     if result['success']:
                         st.balloons()
+                        cols_found = result.get('columns_found', [])
                         st.success(f"""
                         ✅ **Import réussi !**
                         - 📅 Date: **{format_date(result['date'], 'full')}**
                         - 👥 {result['players']} joueurs ({result['new_players']} nouveaux)
                         - 📊 {result['entries']} entrées
+                        - 🔍 Colonnes détectées: {', '.join(cols_found)}
                         """)
                     else:
                         st.error(f"❌ Erreur: {result['error']}")
@@ -1697,6 +1818,27 @@ def page_import():
                 st.error(f"❌ Erreur: {str(e)}")
     
     st.markdown("</div>", unsafe_allow_html=True)
+    
+    # Info box sur le format attendu
+    with st.expander("ℹ️ Format attendu du Google Sheet"):
+        st.markdown("""
+        Le fichier doit contenir :
+        1. **Une ligne avec la date** (ex: "mardi 6 janvier 2026")
+        2. **Une ligne d'en-têtes** avec au minimum : `Joueur`, `Poids`, `Sommeil`, `Charge mentale`, `Motivation`
+        3. **Les données des joueurs** (une ligne par joueur)
+        
+        **Colonnes reconnues :**
+        - `Joueur` ou `Nom` → Nom du joueur
+        - `Poids` → Poids en kg
+        - `Sommeil` → Note de 1 à 5
+        - `Charge mentale` ou `Charge` → Note de 1 à 5
+        - `Motivation` → Note de 1 à 5
+        - `HDC` ou `état général HDC` → Note de 1 à 5
+        - `BDC` ou `état général BDC` → Note de 1 à 5
+        - `Remarque` ou `Commentaire` → Texte libre
+        
+        **Lignes ignorées :** `EQUIPE`, `TOTAL`, `MOYENNE`
+        """)
     
     st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
     
