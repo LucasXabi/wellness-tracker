@@ -876,6 +876,25 @@ def process_suivi_be_data(df, selected_dates=None, debug=False):
                 if name.lower() in ['joueur', 'nom', 'nan', 'none']:
                     continue
                 
+                # Ignorer si le "nom" ressemble à une remarque (trop long ou contient des mots-clés)
+                name_lower = name.lower()
+                remark_keywords = ['douleur', 'courbature', 'fatigue', 'mal ', 'stress', 'crampe', 
+                                   'blessure', 'gêne', 'tension', 'repos', 'sommeil', 'mieux', 
+                                   'moins bien', 'récupération', 'entraînement', 'match', 'vacances',
+                                   'ça va', 'ca va', 'rien à signaler', 'ras', 'ok', 'forme',
+                                   'léger', 'leger', 'petit', 'un peu', 'sensation', 'genou',
+                                   'cheville', 'dos', 'épaule', 'epaule', 'mollet', 'ischio',
+                                   'cuisse', 'adducteur', 'pied', 'jambe', 'bras', 'muscle']
+                
+                # Si le nom est trop long (> 25 caractères) ou contient des mots-clés de remarque, c'est probablement une remarque
+                if len(name) > 25:
+                    continue
+                if any(kw in name_lower for kw in remark_keywords):
+                    continue
+                # Si le nom contient des espaces multiples ou ressemble à une phrase
+                if name.count(' ') > 2:
+                    continue
+                
                 # Créer le joueur s'il n'existe pas
                 if not any(p['name'] == name for p in st.session_state.players):
                     st.session_state.players.append({
@@ -1116,6 +1135,20 @@ def process_imported_data(df, debug=False):
                     skipped_rows.append(f"Ligne {row_idx}: '{name}' (ligne équipe)")
                 continue
             if name.lower() in ['joueur', 'nom', 'nan', 'none', 'player']:
+                continue
+            
+            # Ignorer si le "nom" ressemble à une remarque (trop long ou contient des mots-clés)
+            name_lower = name.lower()
+            remark_keywords = ['douleur', 'courbature', 'fatigue', 'mal ', 'stress', 'crampe', 
+                               'blessure', 'gêne', 'tension', 'repos', 'sommeil', 'mieux', 
+                               'moins bien', 'récupération', 'entraînement', 'match', 'vacances',
+                               'ça va', 'ca va', 'rien à signaler', 'ras', 'ok', 'forme',
+                               'léger', 'leger', 'petit', 'un peu', 'sensation', 'genou',
+                               'cheville', 'dos', 'épaule', 'epaule', 'mollet', 'ischio',
+                               'cuisse', 'adducteur', 'pied', 'jambe', 'bras', 'muscle']
+            if len(name) > 25 or any(kw in name_lower for kw in remark_keywords) or name.count(' ') > 2:
+                if debug:
+                    skipped_rows.append(f"Ligne {row_idx}: '{name}' (ressemble à une remarque)")
                 continue
             
             # Ignorer les lignes qui semblent être des erreurs Excel (#DIV/0!, etc.)
@@ -1505,11 +1538,11 @@ def create_wellness_calendar(player_name, year=None, month=None):
     # En-têtes
     days_header = ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven', 'Sam', 'Dim']
     
-    html = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:4px;text-align:center;">'
+    html = '<div style="display:grid;grid-template-columns:repeat(7,1fr);gap:6px;text-align:center;max-width:400px;">'
     
     # En-têtes des jours
     for day_name in days_header:
-        html += f'<div style="font-size:10px;color:#64748b;padding:4px;">{day_name}</div>'
+        html += f'<div style="font-size:11px;color:#64748b;padding:4px;font-weight:600;">{day_name}</div>'
     
     # Jours du mois
     for day in month_days:
@@ -1524,18 +1557,9 @@ def create_wellness_calendar(player_name, year=None, month=None):
                     bg = '#f59e0b'
                 else:
                     bg = '#ef4444'
-                html += f'''
-                <div class="calendar-day" style="background:{bg};color:white;">
-                    <span style="font-weight:bold;">{day}</span>
-                    <span style="font-size:9px;">{avg:.1f}</span>
-                </div>
-                '''
+                html += f'<div style="background:{bg};color:white;border-radius:8px;padding:8px 4px;"><span style="font-weight:bold;font-size:14px;">{day}</span><br><span style="font-size:10px;">{avg:.1f}</span></div>'
             else:
-                html += f'''
-                <div class="calendar-day" style="background:rgba(71,85,105,0.3);color:#64748b;">
-                    <span>{day}</span>
-                </div>
-                '''
+                html += f'<div style="background:rgba(71,85,105,0.3);color:#64748b;border-radius:8px;padding:8px 4px;"><span style="font-size:14px;">{day}</span></div>'
     
     html += '</div>'
     return html
@@ -1805,10 +1829,13 @@ def page_dashboard():
         alerts = get_alerts(date_key)
         alert_count = len(alerts)
         
+        # Compter les joueurs uniques avec alertes
+        unique_players_with_alerts = len(set(a['player'] for a in alerts)) if alerts else 0
+        
         st.markdown(f"""
         <div style="display:flex;align-items:center;gap:12px;margin-bottom:16px;">
             <h3 style="margin:0;color:white;">⚠️ Alertes du jour</h3>
-            {f'<span style="background:linear-gradient(135deg,#ef4444,#dc2626);color:white;padding:5px 14px;border-radius:20px;font-size:13px;font-weight:600;box-shadow:0 2px 8px rgba(239,68,68,0.3);">{alert_count}</span>' if alert_count else ''}
+            {f'<span style="background:linear-gradient(135deg,#ef4444,#dc2626);color:white;padding:5px 14px;border-radius:20px;font-size:13px;font-weight:600;box-shadow:0 2px 8px rgba(239,68,68,0.3);">{unique_players_with_alerts} joueurs</span>' if alert_count else ''}
         </div>
         """, unsafe_allow_html=True)
         
@@ -1817,21 +1844,34 @@ def page_dashboard():
             for a in alerts:
                 by_player.setdefault(a['player'], []).append(a)
             
-            for player_name, player_alerts in list(by_player.items())[:6]:
+            # Conteneur scrollable pour toutes les alertes
+            alerts_html = '<div style="max-height:350px;overflow-y:auto;padding-right:8px;">'
+            
+            for player_name, player_alerts in by_player.items():
                 msgs = " • ".join([a['message'] for a in player_alerts])
                 has_critical = any(a['type'] == 'critical' for a in player_alerts)
-                card_class = "alert-card" if has_critical else "alert-card warning"
-                badge = "🔴 Critique" if has_critical else "🟡 Attention"
                 
-                st.markdown(f"""
-                <div class="{card_class}">
+                if has_critical:
+                    bg = 'linear-gradient(135deg, rgba(239,68,68,0.15), rgba(220,38,38,0.1))'
+                    border_color = 'rgba(239,68,68,0.4)'
+                    badge = '🔴 CRITIQUE'
+                else:
+                    bg = 'linear-gradient(135deg, rgba(245,158,11,0.15), rgba(217,119,6,0.1))'
+                    border_color = 'rgba(245,158,11,0.4)'
+                    badge = '🟡 Attention'
+                
+                alerts_html += f"""
+                <div style="background:{bg};border:1px solid {border_color};border-radius:12px;padding:12px 16px;margin-bottom:10px;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
                         <span style="font-weight:600;color:white;font-size:14px;">{player_name}</span>
-                        <span style="font-size:10px;font-weight:600;text-transform:uppercase;opacity:0.8;">{badge}</span>
+                        <span style="font-size:10px;font-weight:600;text-transform:uppercase;opacity:0.8;color:white;">{badge}</span>
                     </div>
-                    <div style="font-size:12px;opacity:0.9;">{msgs}</div>
+                    <div style="font-size:12px;color:rgba(255,255,255,0.85);">{msgs}</div>
                 </div>
-                """, unsafe_allow_html=True)
+                """
+            
+            alerts_html += '</div>'
+            st.markdown(alerts_html, unsafe_allow_html=True)
         else:
             st.markdown("""
             <div class="glass-card" style="text-align:center;padding:2.5rem;">
@@ -1957,7 +1997,7 @@ def page_dashboard():
                             </div>
                         </div>
                         <span class="status-badge {status_class}">{row['status']}</span>
-                        <div style="color:#94a3b8;font-size:13px;min-width:55px;text-align:center;">{f"{row['weight']:.1f}" if row['weight'] else "-"} kg</div>
+                        <div style="color:#94a3b8;font-size:13px;min-width:55px;text-align:center;">{f"{row['weight']:.1f} kg" if row['weight'] else ""}</div>
                         <div style="display:flex;align-items:center;gap:4px;">
                             {metrics_badges}
                             <span class="metric-badge" style="background:{avg_color};margin-left:8px;font-size:13px;">{avg_str}</span>
@@ -2900,10 +2940,11 @@ def main():
         if dates:
             alerts = get_alerts(dates[0])
             if alerts:
+                unique_players = len(set(a['player'] for a in alerts))
                 st.markdown(f"""
                 <div style="background:linear-gradient(135deg,rgba(239,68,68,0.2),rgba(239,68,68,0.1));border:1px solid rgba(239,68,68,0.3);border-radius:12px;padding:16px;text-align:center;">
                     <div style="font-size:28px;">🚨</div>
-                    <div style="color:#f87171;font-weight:600;font-size:16px;">{len(alerts)} alertes</div>
+                    <div style="color:#f87171;font-weight:600;font-size:16px;">{unique_players} alertes</div>
                     <div style="color:#64748b;font-size:11px;">aujourd'hui</div>
                 </div>
                 """, unsafe_allow_html=True)
