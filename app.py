@@ -2187,40 +2187,52 @@ def page_import():
             
             st.markdown(f"### 📅 {len(available_dates)} dates disponibles")
             
+            # Initialiser le compteur pour forcer le refresh du multiselect
+            if 'multiselect_key' not in st.session_state:
+                st.session_state['multiselect_key'] = 0
+            
             # Options de sélection rapide
             col_sel1, col_sel2, col_sel3 = st.columns(3)
             with col_sel1:
                 if st.button("✅ Tout sélectionner", use_container_width=True):
                     st.session_state['selected_suivi_dates'] = [d['date'] for d in available_dates]
+                    st.session_state['multiselect_key'] += 1  # Force refresh
                     st.rerun()
             with col_sel2:
                 if st.button("❌ Tout désélectionner", use_container_width=True):
                     st.session_state['selected_suivi_dates'] = []
+                    st.session_state['multiselect_key'] += 1
                     st.rerun()
             with col_sel3:
                 if st.button("📅 7 derniers jours", use_container_width=True):
                     st.session_state['selected_suivi_dates'] = [d['date'] for d in available_dates[-7:]]
+                    st.session_state['multiselect_key'] += 1
                     st.rerun()
             
-            # Multi-select des dates
+            # Multi-select des dates avec clé dynamique
             date_options = {d['date']: d['label'] for d in available_dates}
             default_selection = st.session_state.get('selected_suivi_dates', [])
             
+            # Utiliser une clé dynamique pour forcer le refresh
             selected = st.multiselect(
                 "Sélectionnez les dates à importer",
                 options=list(date_options.keys()),
                 default=[d for d in default_selection if d in date_options],
                 format_func=lambda x: date_options.get(x, x),
-                key="date_multiselect"
+                key=f"date_multiselect_{st.session_state['multiselect_key']}"
             )
             
+            # Mettre à jour la sélection
             st.session_state['selected_suivi_dates'] = selected
             
-            # Bouton d'import
-            if selected:
-                st.markdown(f"**{len(selected)} date(s) sélectionnée(s)**")
-                
-                if st.button(f"📥 Importer {len(selected)} jour(s)", type="primary", use_container_width=True, key="import_suivi"):
+            # Afficher le nombre sélectionné
+            st.info(f"📊 **{len(selected)} date(s) sélectionnée(s)**")
+            
+            # Bouton d'import (toujours visible)
+            if st.button(f"📥 Importer les dates sélectionnées", type="primary", use_container_width=True, key="import_suivi", disabled=(len(selected) == 0)):
+                if not selected:
+                    st.warning("⚠️ Sélectionnez au moins une date")
+                else:
                     try:
                         df = st.session_state.get('suivi_be_df')
                         if df is None:
@@ -2243,15 +2255,22 @@ def page_import():
                                         st.write(f"• {d}")
                                 
                                 # Nettoyer le cache
-                                del st.session_state['suivi_be_dates']
-                                del st.session_state['suivi_be_df']
+                                if 'suivi_be_dates' in st.session_state:
+                                    del st.session_state['suivi_be_dates']
+                                if 'suivi_be_df' in st.session_state:
+                                    del st.session_state['suivi_be_df']
+                                if 'selected_suivi_dates' in st.session_state:
+                                    del st.session_state['selected_suivi_dates']
                             else:
                                 st.error(f"❌ Erreur: {result.get('error', 'Erreur inconnue')}")
                                 
                     except Exception as e:
                         st.error(f"❌ Erreur: {str(e)}")
-            else:
-                st.info("👆 Sélectionnez au moins une date pour importer")
+                        import traceback
+                        st.code(traceback.format_exc())
+            
+            if not selected:
+                st.warning("👆 Sélectionnez au moins une date pour importer")
     
     st.markdown("</div>", unsafe_allow_html=True)
     
