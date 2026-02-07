@@ -884,7 +884,10 @@ def process_suivi_be_data(df, selected_dates=None, debug=False):
                                    'ça va', 'ca va', 'rien à signaler', 'ras', 'ok', 'forme',
                                    'léger', 'leger', 'petit', 'un peu', 'sensation', 'genou',
                                    'cheville', 'dos', 'épaule', 'epaule', 'mollet', 'ischio',
-                                   'cuisse', 'adducteur', 'pied', 'jambe', 'bras', 'muscle']
+                                   'cuisse', 'adducteur', 'pied', 'jambe', 'bras', 'muscle',
+                                   'lésion', 'lesion', 'soucis', 'souci', 'problème', 'probleme',
+                                   'gêné', 'gene', 'douloureux', 'tendu', 'raide', 'contracture',
+                                   'inflamm', 'entorse', 'foulure', 'claquage', 'déchir', 'rechute']
                 
                 # Si le nom est trop long (> 25 caractères) ou contient des mots-clés de remarque, c'est probablement une remarque
                 if len(name) > 25:
@@ -1145,7 +1148,10 @@ def process_imported_data(df, debug=False):
                                'ça va', 'ca va', 'rien à signaler', 'ras', 'ok', 'forme',
                                'léger', 'leger', 'petit', 'un peu', 'sensation', 'genou',
                                'cheville', 'dos', 'épaule', 'epaule', 'mollet', 'ischio',
-                               'cuisse', 'adducteur', 'pied', 'jambe', 'bras', 'muscle']
+                               'cuisse', 'adducteur', 'pied', 'jambe', 'bras', 'muscle',
+                               'lésion', 'lesion', 'soucis', 'souci', 'problème', 'probleme',
+                               'gêné', 'gene', 'douloureux', 'tendu', 'raide', 'contracture',
+                               'inflamm', 'entorse', 'foulure', 'claquage', 'déchir', 'rechute']
             if len(name) > 25 or any(kw in name_lower for kw in remark_keywords) or name.count(' ') > 2:
                 if debug:
                     skipped_rows.append(f"Ligne {row_idx}: '{name}' (ressemble à une remarque)")
@@ -1487,6 +1493,93 @@ def zscore_series(metric='global', group=None, days=30):
             result.append({'date': date, 'value': day_avg, 'zscore': round(zscore, 2)})
     
     return result
+
+
+def get_absolute_values_series(metric='global', group=None, days=30):
+    """Calcule la série de valeurs absolues moyennes pour une métrique/groupe"""
+    dates = sorted(st.session_state.data.keys())[-days:]
+    if len(dates) < 1:
+        return []
+    
+    result = []
+    for date in dates:
+        data = st.session_state.data.get(date, [])
+        if not data:
+            continue
+        
+        day_values = []
+        for d in data:
+            p = next((p for p in st.session_state.players if p['name'] == d['name']), None)
+            if not p:
+                continue
+            if group and get_player_group(p['position']) != group:
+                continue
+            
+            val = get_player_average(d) if metric == 'global' else d.get(metric)
+            if val is not None:
+                day_values.append(val)
+        
+        if day_values:
+            day_avg = sum(day_values) / len(day_values)
+            result.append({'date': date, 'value': round(day_avg, 2)})
+    
+    return result
+
+
+def create_absolute_values_chart(data):
+    """Crée un graphique des valeurs absolues (0-5)"""
+    if not data or len(data) < 1:
+        return None
+    
+    df = pd.DataFrame(data)
+    df['formatted_date'] = df['date'].apply(lambda x: format_date(x, 'short'))
+    
+    # Couleurs selon la valeur
+    colors = []
+    for val in df['value']:
+        if val >= 4:
+            colors.append('#10b981')  # Vert
+        elif val >= 3:
+            colors.append('#f59e0b')  # Orange
+        else:
+            colors.append('#ef4444')  # Rouge
+    
+    fig = go.Figure()
+    
+    # Barres
+    fig.add_trace(go.Bar(
+        x=df['formatted_date'],
+        y=df['value'],
+        marker_color=colors,
+        hovertemplate='%{x}<br>Valeur: %{y:.2f}/5<extra></extra>'
+    ))
+    
+    # Lignes de référence
+    fig.add_hline(y=4, line_dash="dash", line_color="#10b981", opacity=0.5, annotation_text="Excellent")
+    fig.add_hline(y=3, line_dash="dash", line_color="#f59e0b", opacity=0.5, annotation_text="Correct")
+    
+    fig.update_layout(
+        plot_bgcolor='rgba(0,0,0,0)',
+        paper_bgcolor='rgba(0,0,0,0)',
+        font=dict(color='#94a3b8'),
+        margin=dict(l=40, r=20, t=20, b=60),
+        xaxis=dict(
+            showgrid=False,
+            tickangle=-45,
+            tickfont=dict(size=10)
+        ),
+        yaxis=dict(
+            showgrid=True,
+            gridcolor='rgba(71,85,105,0.3)',
+            range=[0, 5.5],
+            tickvals=[0, 1, 2, 3, 4, 5],
+            title="Moyenne /5"
+        ),
+        height=350,
+        bargap=0.3
+    )
+    
+    return fig
 
 def player_zscore_series(player_name, days=30):
     """Calcule la série de Z-Scores pour un joueur"""
@@ -1844,8 +1937,8 @@ def page_dashboard():
             for a in alerts:
                 by_player.setdefault(a['player'], []).append(a)
             
-            # Conteneur scrollable pour toutes les alertes
-            alerts_html = '<div style="max-height:350px;overflow-y:auto;padding-right:8px;">'
+            # Conteneur scrollable
+            st.markdown('<div style="max-height:350px;overflow-y:auto;padding-right:8px;">', unsafe_allow_html=True)
             
             for player_name, player_alerts in by_player.items():
                 msgs = " • ".join([a['message'] for a in player_alerts])
@@ -1860,7 +1953,7 @@ def page_dashboard():
                     border_color = 'rgba(245,158,11,0.4)'
                     badge = '🟡 Attention'
                 
-                alerts_html += f"""
+                st.markdown(f"""
                 <div style="background:{bg};border:1px solid {border_color};border-radius:12px;padding:12px 16px;margin-bottom:10px;">
                     <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:4px;">
                         <span style="font-weight:600;color:white;font-size:14px;">{player_name}</span>
@@ -1868,10 +1961,9 @@ def page_dashboard():
                     </div>
                     <div style="font-size:12px;color:rgba(255,255,255,0.85);">{msgs}</div>
                 </div>
-                """
+                """, unsafe_allow_html=True)
             
-            alerts_html += '</div>'
-            st.markdown(alerts_html, unsafe_allow_html=True)
+            st.markdown('</div>', unsafe_allow_html=True)
         else:
             st.markdown("""
             <div class="glass-card" style="text-align:center;padding:2.5rem;">
@@ -1960,13 +2052,30 @@ def page_dashboard():
     if rows:
         st.markdown(f"<div style='color:#64748b;font-size:13px;margin-bottom:12px;'>{len(rows)} joueurs affichés</div>", unsafe_allow_html=True)
         
+        # En-têtes des colonnes
+        st.markdown("""
+        <div style="display:grid;grid-template-columns:200px 70px 60px repeat(5, 40px) 50px 50px 1fr;gap:8px;align-items:center;padding:8px 16px;margin-bottom:8px;color:#64748b;font-size:11px;font-weight:600;text-transform:uppercase;">
+            <span>Joueur</span>
+            <span style="text-align:center;">Statut</span>
+            <span style="text-align:center;">Poids</span>
+            <span style="text-align:center;">😴</span>
+            <span style="text-align:center;">🧠</span>
+            <span style="text-align:center;">💪</span>
+            <span style="text-align:center;">❤️</span>
+            <span style="text-align:center;">💚</span>
+            <span style="text-align:center;">Moy.</span>
+            <span style="text-align:center;">Δ</span>
+            <span>💬 Remarque</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
         for row in rows:
             # Métriques badges
-            metrics_badges = ""
+            metrics_html = ""
             for m in METRICS:
                 val = row['metrics'].get(m['key'])
                 color = get_color_for_value(val)
-                metrics_badges += f'<span class="metric-badge" style="background:{color};">{int(val) if val else "-"}</span>'
+                metrics_html += f'<span style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:8px;background:{color};color:white;font-weight:600;font-size:14px;">{int(val) if val else "-"}</span>'
             
             # Moyenne + diff
             avg_color = get_color_for_value(row['avg'])
@@ -1978,32 +2087,37 @@ def page_dashboard():
                 diff_str = f'<span style="color:{diff_color};font-size:12px;font-weight:600;">{("+" if row["diff"] >= 0 else "")}{row["diff"]:.1f}</span>'
             
             # Status badge
-            status_class = {'Apte': 'status-apte', 'Blessé': 'status-blesse', 'Réhabilitation': 'status-rehab', 'Réathlétisation': 'status-reath'}.get(row['status'], '')
+            status_colors = {'Apte': '#10b981', 'Blessé': '#ef4444', 'Réhabilitation': '#f59e0b', 'Réathlétisation': '#3b82f6'}
+            status_color = status_colors.get(row['status'], '#64748b')
             group_abbr = "Av" if row['group'] == "Avants" else "3/4"
             avatar_class = get_avatar_gradient(row['name'])
-            alert_class = "has-alert" if row['has_issue'] else ""
             
-            col1, col2 = st.columns([5, 1])
+            # Poids
+            weight_str = f"{row['weight']:.1f}" if row['weight'] else "-"
+            
+            # Remarque - bien visible
+            remark_display = row['remark'] if row['remark'] else ""
+            remark_style = "color:#94a3b8;" if not row['remark'] else "color:#e2e8f0;background:rgba(99,102,241,0.15);padding:4px 8px;border-radius:6px;"
+            
+            col1, col2 = st.columns([6, 1])
             
             with col1:
                 st.markdown(f"""
-                <div class="player-row {alert_class}">
-                    <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:12px;">
-                        <div style="display:flex;align-items:center;gap:12px;min-width:200px;">
-                            <div class="player-avatar {avatar_class}">{row['name'][0]}</div>
+                <div class="player-row {'has-alert' if row['has_issue'] else ''}" style="padding:10px 16px;">
+                    <div style="display:grid;grid-template-columns:200px 70px 60px repeat(5, 40px) 50px 50px 1fr;gap:8px;align-items:center;">
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            <div class="player-avatar {avatar_class}" style="width:38px;height:38px;font-size:16px;">{row['name'][0]}</div>
                             <div>
-                                <div style="font-weight:600;color:white;font-size:14px;">{row['name']}</div>
-                                <div style="font-size:11px;color:#64748b;">{row['position']} ({group_abbr})</div>
+                                <div style="font-weight:600;color:white;font-size:13px;">{row['name']}</div>
+                                <div style="font-size:10px;color:#64748b;">{row['position']} ({group_abbr})</div>
                             </div>
                         </div>
-                        <span class="status-badge {status_class}">{row['status']}</span>
-                        <div style="color:#94a3b8;font-size:13px;min-width:55px;text-align:center;">{f"{row['weight']:.1f} kg" if row['weight'] else ""}</div>
-                        <div style="display:flex;align-items:center;gap:4px;">
-                            {metrics_badges}
-                            <span class="metric-badge" style="background:{avg_color};margin-left:8px;font-size:13px;">{avg_str}</span>
-                            <span style="min-width:45px;text-align:center;">{diff_str}</span>
-                        </div>
-                        <div style="color:#64748b;font-size:11px;max-width:120px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="{row['remark']}">{row['remark'][:25] + '...' if len(row['remark']) > 25 else row['remark']}</div>
+                        <span style="display:inline-block;padding:4px 10px;border-radius:20px;font-size:10px;font-weight:600;background:{status_color};color:white;text-align:center;">{row['status']}</span>
+                        <span style="color:#94a3b8;font-size:13px;text-align:center;">{weight_str}</span>
+                        {metrics_html}
+                        <span style="display:inline-flex;align-items:center;justify-content:center;width:40px;height:36px;border-radius:8px;background:{avg_color};color:white;font-weight:600;font-size:13px;">{avg_str}</span>
+                        <span style="text-align:center;min-width:45px;">{diff_str}</span>
+                        <div style="{remark_style}font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{row['remark']}">{remark_display}</div>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -2020,7 +2134,11 @@ def page_dashboard():
     col1, col2 = st.columns(2)
     
     with col1:
-        st.markdown("### 📈 Tendance Z-Score")
+        st.markdown("### 📈 Tendance Wellness")
+        
+        # Option pour choisir le type de graphique
+        chart_type = st.radio("Type d'affichage", ["📊 Z-Score (vs moyenne)", "📈 Valeurs absolues (0-5)"], horizontal=True, key="chart_type")
+        
         mc1, mc2, mc3 = st.columns(3)
         with mc1:
             zmetric = st.selectbox("Métrique", ['global'] + [m['key'] for m in METRICS],
@@ -2030,13 +2148,23 @@ def page_dashboard():
         with mc3:
             zdays = st.selectbox("Période", [7, 14, 30, 60], index=2, format_func=lambda x: f"{x} jours", key="zd")
         
-        zdata = zscore_series(metric=zmetric, group=None if zgroup == "Équipe" else zgroup, days=zdays)
-        fig = create_zscore_chart(zdata)
-        if fig:
-            st.plotly_chart(fig, use_container_width=True)
-            st.caption("🟢 Normal (≥ -1) | 🟡 Attention (-1.5 à -1) | 🔴 Alerte (< -1.5)")
+        if chart_type == "📊 Z-Score (vs moyenne)":
+            zdata = zscore_series(metric=zmetric, group=None if zgroup == "Équipe" else zgroup, days=zdays)
+            fig = create_zscore_chart(zdata)
+            if fig:
+                st.plotly_chart(fig, use_container_width=True)
+                st.caption("🟢 Normal (≥ -1) | 🟡 Attention (-1.5 à -1) | 🔴 Alerte (< -1.5)")
+            else:
+                st.info("Pas assez de données (minimum 5 jours)")
         else:
-            st.info("Pas assez de données (minimum 5 jours)")
+            # Graphique valeurs absolues
+            abs_data = get_absolute_values_series(metric=zmetric, group=None if zgroup == "Équipe" else zgroup, days=zdays)
+            fig = create_absolute_values_chart(abs_data)
+            if fig:
+                st.plotly_chart(fig, use_container_width=True)
+                st.caption("🟢 Excellent (≥4) | 🟡 Correct (3-4) | 🔴 Faible (<3)")
+            else:
+                st.info("Pas assez de données")
     
     with col2:
         st.markdown("### 📊 Comparaison Radar")
