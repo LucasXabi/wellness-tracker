@@ -912,33 +912,30 @@ def process_suivi_be_data(df, selected_dates=None, debug=False):
             
             # Chercher la colonne Remarque explicitement d'abord
             remark_found = False
-            for offset in range(6, min(12, end_col - start_col)):
+            # Chercher dans les colonnes après BDC jusqu'à la fin du bloc
+            for offset in range(5, min(15, end_col - start_col)):
                 check_col = start_col + offset
                 if check_col < len(header_row_data) and check_col < end_col:
                     cell = header_row_data.iloc[check_col]
                     if pd.notna(cell):
-                        cell_norm = normalize_text(cell)
-                        if 'remarque' in cell_norm or 'commentaire' in cell_norm or 'note' in cell_norm:
+                        cell_norm = normalize_text(str(cell))
+                        if 'remarque' in cell_norm or 'commentaire' in cell_norm or 'note' in cell_norm or 'comment' in cell_norm:
                             col_indices['remark'] = check_col
                             remark_found = True
                             if debug:
-                                st.write(f"  ✅ Remarque trouvée en colonne {check_col}")
+                                st.write(f"  ✅ Remarque trouvée en colonne {check_col} (header: '{cell}')")
                             break
             
-            # Si pas trouvé par nom, utiliser la position par défaut
-            # La structure est: Joueur(+0) | Sommeil(+1) | Charge(+2) | Motivation(+3) | HDC(+4) | BDC(+5) | Moyenne(+6) | Remarque(+7)
+            # Si pas trouvé par nom, essayer plusieurs positions par défaut
             if not remark_found:
-                # Essayer +7 (après Moyenne)
-                remark_col = start_col + 7
-                if remark_col < end_col and remark_col < len(header_row_data):
-                    col_indices['remark'] = remark_col
-                    if debug:
-                        st.write(f"  📝 Remarque assignée par position à colonne {remark_col}")
-                # Si la structure n'a pas de Moyenne, essayer +6
-                elif start_col + 6 < end_col:
-                    col_indices['remark'] = start_col + 6
-                    if debug:
-                        st.write(f"  📝 Remarque assignée par position à colonne {start_col + 6} (pas de Moyenne)")
+                # Essayer +7, +8, +6 dans cet ordre
+                possible_positions = [start_col + 7, start_col + 8, start_col + 6]
+                for remark_col in possible_positions:
+                    if remark_col < end_col and remark_col < len(header_row_data):
+                        col_indices['remark'] = remark_col
+                        if debug:
+                            st.write(f"  📝 Remarque assignée par position par défaut à colonne {remark_col}")
+                        break
             
             if debug:
                 st.write(f"  Colonnes mappées (par position): name={col_indices.get('name')}, sleep={col_indices.get('sleep')}, mentalLoad={col_indices.get('mentalLoad')}, motivation={col_indices.get('motivation')}, hdcState={col_indices.get('hdcState')}, bdcState={col_indices.get('bdcState')}, remark={col_indices.get('remark')}")
@@ -972,28 +969,51 @@ def process_suivi_be_data(df, selected_dates=None, debug=False):
                 
                 # Ignorer si le "nom" ressemble à une remarque (trop long ou contient des mots-clés)
                 name_lower = name.lower()
-                # Mots-clés de remarque - éviter les mots courts qui peuvent matcher des noms
-                remark_keywords = ['douleur', 'courbature', 'fatigue', 'stress', 'crampe', 
-                                   'blessure', 'tension', 'repos', 'sommeil', 'mieux', 
-                                   'moins bien', 'récupération', 'entraînement', 'match', 'vacances',
-                                   'ça va', 'ca va', 'rien à signaler', 'forme physique',
-                                   'léger', 'leger', 'petit souci', 'un peu', 'sensation', 'genou',
-                                   'cheville', 'épaule', 'epaule', 'mollet', 'ischio',
-                                   'cuisse', 'adducteur', 'pied', 'jambe', 'muscle',
-                                   'lésion', 'lesion', 'soucis', 'souci', 'problème', 'probleme',
-                                   'gêné', 'gene', 'douloureux', 'tendu', 'raide', 'contracture',
-                                   'inflamm', 'entorse', 'foulure', 'claquage', 'déchir', 'rechute',
-                                   'toujours', 'encore', 'hier', 'ce matin', 'cette nuit']
                 
-                # Si le nom est trop long (> 25 caractères) ou contient des mots-clés de remarque, c'est probablement une remarque
+                # Mots-clés de remarque - phrases ou expressions qui indiquent clairement une remarque
+                # On utilise des expressions plus longues pour éviter les faux positifs sur les noms
+                remark_patterns = [
+                    # Expressions de douleur/blessure
+                    'douleur', 'courbature', 'fatigue', 'crampe', 'blessure', 
+                    'contracture', 'entorse', 'foulure', 'claquage', 'déchir',
+                    'inflamm', 'tendinite', 'élongation',
+                    # Parties du corps (comme début de remarque)
+                    'genou droit', 'genou gauche', 'cheville', 'épaule', 'mollet',
+                    'ischio', 'cuisse', 'adducteur', 'quadri', 'dos bloqué',
+                    # États
+                    'pas en forme', 'fatigué', 'malade', 'grippé', 'épuisé',
+                    # Actions/situations
+                    'rien à signaler', 'tout va bien', 'en forme', 'récupération',
+                    'au repos', 'absent', 'indisponible',
+                    # Temporels (indiquent une remarque contextuelle)
+                    'ce matin', 'cette nuit', 'hier soir', 'depuis', 'toujours mal',
+                    'encore douloureux', 'toujours gêné',
+                    # Phrases types
+                    'mal au', 'mal à la', 'mal aux', 'douleur au', 'gêne au',
+                    'sensation de', 'léger problème', 'petit souci'
+                ]
+                
+                # Un nom ne doit PAS être filtré si :
+                # - C'est un nom court (< 15 chars) sans pattern de remarque évident
+                # - C'est en majuscules (les noms sont souvent en majuscules)
+                is_likely_name = (
+                    len(name) < 15 and 
+                    name.count(' ') <= 1 and
+                    name.isupper()
+                )
+                
+                # Vérifier si ça ressemble à une remarque
                 skip_reason = None
-                if len(name) > 25:
-                    skip_reason = f"nom trop long ({len(name)} chars)"
-                elif any(kw in name_lower for kw in remark_keywords):
-                    matched_kw = [kw for kw in remark_keywords if kw in name_lower]
-                    skip_reason = f"mot-clé remarque: {matched_kw[0]}"
-                elif name.count(' ') > 2:
+                if len(name) > 30:  # Plus permissif (30 au lieu de 25)
+                    skip_reason = f"texte trop long ({len(name)} chars)"
+                elif name.count(' ') > 3:  # Plus permissif (3 au lieu de 2)
                     skip_reason = f"trop d'espaces ({name.count(' ')})"
+                elif not is_likely_name:
+                    # Vérifier les patterns seulement si ce n'est pas clairement un nom
+                    for pattern in remark_patterns:
+                        if pattern in name_lower:
+                            skip_reason = f"ressemble à remarque: '{pattern}'"
+                            break
                 
                 if skip_reason:
                     skipped_reasons[name] = skip_reason
@@ -1044,7 +1064,8 @@ def process_suivi_be_data(df, selected_dates=None, debug=False):
                     skipped_players.append(name)
             
             if debug:
-                st.write(f"  → {len(entries)} joueurs avec données")
+                entries_with_remarks = sum(1 for e in entries if e.get('remark'))
+                st.write(f"  → {len(entries)} joueurs avec données ({entries_with_remarks} avec remarques)")
                 if skipped_reasons:
                     with st.expander(f"⚠️ {len(skipped_reasons)} noms filtrés (pas des joueurs)"):
                         for name, reason in list(skipped_reasons.items())[:10]:
@@ -1267,20 +1288,38 @@ def process_imported_data(df, debug=False):
             
             # Ignorer si le "nom" ressemble à une remarque (trop long ou contient des mots-clés)
             name_lower = name.lower()
-            # Mots-clés de remarque - éviter les mots courts qui peuvent matcher des noms
-            # (ex: "ok" matchait KOLOKILAGI, "dos" pourrait matcher DOS SANTOS)
-            remark_keywords = ['douleur', 'courbature', 'fatigue', 'stress', 'crampe', 
-                               'blessure', 'tension', 'repos', 'sommeil', 'mieux', 
-                               'moins bien', 'récupération', 'entraînement', 'match', 'vacances',
-                               'ça va', 'ca va', 'rien à signaler', 'forme physique',
-                               'léger', 'leger', 'petit souci', 'un peu', 'sensation', 'genou',
-                               'cheville', 'épaule', 'epaule', 'mollet', 'ischio',
-                               'cuisse', 'adducteur', 'pied', 'jambe', 'muscle',
-                               'lésion', 'lesion', 'soucis', 'souci', 'problème', 'probleme',
-                               'gêné', 'gene', 'douloureux', 'tendu', 'raide', 'contracture',
-                               'inflamm', 'entorse', 'foulure', 'claquage', 'déchir', 'rechute',
-                               'toujours', 'encore', 'hier', 'ce matin', 'cette nuit']
-            if len(name) > 25 or any(kw in name_lower for kw in remark_keywords) or name.count(' ') > 2:
+            
+            # Mots-clés de remarque - phrases ou expressions qui indiquent clairement une remarque
+            remark_patterns = [
+                'douleur', 'courbature', 'fatigue', 'crampe', 'blessure', 
+                'contracture', 'entorse', 'foulure', 'claquage', 'déchir',
+                'inflamm', 'tendinite', 'élongation',
+                'genou droit', 'genou gauche', 'cheville', 'épaule', 'mollet',
+                'ischio', 'cuisse', 'adducteur', 'quadri', 'dos bloqué',
+                'pas en forme', 'fatigué', 'malade', 'grippé', 'épuisé',
+                'rien à signaler', 'tout va bien', 'en forme', 'récupération',
+                'au repos', 'absent', 'indisponible',
+                'ce matin', 'cette nuit', 'hier soir', 'depuis', 'toujours mal',
+                'encore douloureux', 'toujours gêné',
+                'mal au', 'mal à la', 'mal aux', 'douleur au', 'gêne au',
+                'sensation de', 'léger problème', 'petit souci'
+            ]
+            
+            # Un nom en majuscules court est probablement un vrai nom
+            is_likely_name = len(name) < 15 and name.count(' ') <= 1 and name.isupper()
+            
+            skip_as_remark = False
+            if len(name) > 30:
+                skip_as_remark = True
+            elif name.count(' ') > 3:
+                skip_as_remark = True
+            elif not is_likely_name:
+                for pattern in remark_patterns:
+                    if pattern in name_lower:
+                        skip_as_remark = True
+                        break
+            
+            if skip_as_remark:
                 if debug:
                     skipped_rows.append(f"Ligne {row_idx}: '{name}' (ressemble à une remarque)")
                 continue
@@ -2184,7 +2223,7 @@ def page_dashboard():
         
         # En-têtes des colonnes
         st.markdown("""
-        <div style="display:grid;grid-template-columns:200px 70px 60px repeat(5, 40px) 50px 50px 1fr;gap:8px;align-items:center;padding:8px 16px;margin-bottom:8px;color:#64748b;font-size:11px;font-weight:600;text-transform:uppercase;">
+        <div style="display:grid;grid-template-columns:190px 65px 55px repeat(5, 38px) 45px 42px 1fr;gap:6px;align-items:center;padding:8px 16px;margin-bottom:4px;color:#64748b;font-size:10px;font-weight:600;text-transform:uppercase;letter-spacing:0.5px;">
             <span>Joueur</span>
             <span style="text-align:center;">Statut</span>
             <span style="text-align:center;">Poids</span>
@@ -2225,49 +2264,57 @@ def page_dashboard():
             # Poids
             weight_str = f"{row['weight']:.1f}" if row['weight'] else "-"
             
-            # Remarque - tronquer pour affichage
+            # Remarque
             remark_full = row['remark'] if row['remark'] else ""
-            remark_truncated = remark_full[:40] + "..." if len(remark_full) > 40 else remark_full
-            has_long_remark = len(remark_full) > 40
-            remark_style = "color:#94a3b8;" if not remark_full else "color:#e2e8f0;background:rgba(99,102,241,0.15);padding:4px 8px;border-radius:6px;"
+            remark_truncated = remark_full[:30] + "…" if len(remark_full) > 30 else remark_full
+            has_remark = bool(remark_full)
+            remark_bg = "background:rgba(99,102,241,0.12);padding:3px 8px;border-radius:5px;" if has_remark else ""
             
-            # Layout: info joueur | bouton fiche | bouton remarque (si longue)
-            if has_long_remark:
-                col1, col2, col3 = st.columns([5.5, 0.8, 0.7])
-            else:
-                col1, col2 = st.columns([6, 1])
+            # Layout uniforme pour tous
+            col_main, col_btns = st.columns([5.8, 1.2])
             
-            with col1:
+            with col_main:
                 st.markdown(f"""
                 <div class="player-row {'has-alert' if row['has_issue'] else ''}" style="padding:10px 16px;">
-                    <div style="display:grid;grid-template-columns:200px 70px 60px repeat(5, 40px) 50px 50px 1fr;gap:8px;align-items:center;">
+                    <div style="display:grid;grid-template-columns:190px 65px 55px repeat(5, 38px) 45px 42px 1fr;gap:6px;align-items:center;">
                         <div style="display:flex;align-items:center;gap:10px;">
-                            <div class="player-avatar {avatar_class}" style="width:38px;height:38px;font-size:16px;">{row['name'][0]}</div>
+                            <div class="player-avatar {avatar_class}" style="width:36px;height:36px;font-size:15px;">{row['name'][0]}</div>
                             <div>
                                 <div style="font-weight:600;color:white;font-size:13px;">{row['name']}</div>
                                 <div style="font-size:10px;color:#64748b;">{row['position']} ({group_abbr})</div>
                             </div>
                         </div>
-                        <span style="display:inline-block;padding:4px 10px;border-radius:20px;font-size:10px;font-weight:600;background:{status_color};color:white;text-align:center;">{row['status']}</span>
-                        <span style="color:#94a3b8;font-size:13px;text-align:center;">{weight_str}</span>
+                        <span style="display:inline-block;padding:3px 8px;border-radius:20px;font-size:9px;font-weight:600;background:{status_color};color:white;text-align:center;">{row['status']}</span>
+                        <span style="color:#94a3b8;font-size:12px;text-align:center;">{weight_str}</span>
                         {metrics_html}
-                        <span style="display:inline-flex;align-items:center;justify-content:center;width:40px;height:36px;border-radius:8px;background:{avg_color};color:white;font-weight:600;font-size:13px;">{avg_str}</span>
-                        <span style="text-align:center;min-width:45px;">{diff_str}</span>
-                        <div style="{remark_style}font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:{'pointer' if has_long_remark else 'default'};" title="{remark_full}">{remark_truncated}</div>
+                        <span style="display:inline-flex;align-items:center;justify-content:center;width:38px;height:34px;border-radius:8px;background:{avg_color};color:white;font-weight:600;font-size:12px;">{avg_str}</span>
+                        <span style="text-align:center;min-width:40px;">{diff_str}</span>
+                        <div style="{remark_bg}color:#cbd5e1;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{remark_full}">{remark_truncated if has_remark else '—'}</div>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
             
-            with col2:
-                if st.button("👁️ Fiche", key=f"btn_{row['name']}_{idx}", use_container_width=True):
-                    show_player_modal(player_ids[row['name']])
-            
-            # Bouton pour voir la remarque complète si elle est longue
-            if has_long_remark:
-                with col3:
-                    with st.popover("💬", use_container_width=True):
-                        st.markdown(f"**{row['name']}** - Remarque")
-                        st.markdown(f"<div style='background:rgba(99,102,241,0.1);padding:12px;border-radius:8px;color:#e2e8f0;font-size:13px;line-height:1.5;'>{remark_full}</div>", unsafe_allow_html=True)
+            with col_btns:
+                # Deux petits boutons côte à côte, toujours présents
+                b1, b2 = st.columns(2)
+                with b1:
+                    if st.button("👁️", key=f"fiche_{idx}", help=f"Fiche {row['name']}"):
+                        show_player_modal(player_ids[row['name']])
+                with b2:
+                    if has_remark:
+                        with st.popover("💬", help="Voir remarque"):
+                            st.markdown(f"""
+                            <div style="min-width:280px;max-width:400px;">
+                                <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;">
+                                    <div class="player-avatar {avatar_class}" style="width:32px;height:32px;font-size:14px;">{row['name'][0]}</div>
+                                    <span style="font-weight:600;color:white;font-size:14px;">{row['name']}</span>
+                                </div>
+                                <div style="background:rgba(99,102,241,0.15);padding:14px;border-radius:10px;color:#e2e8f0;font-size:13px;line-height:1.6;">{remark_full}</div>
+                            </div>
+                            """, unsafe_allow_html=True)
+                    else:
+                        # Placeholder invisible pour garder l'alignement
+                        st.write("")
     else:
         st.info("Aucun joueur ne correspond aux filtres sélectionnés.")
     
@@ -2783,37 +2830,56 @@ def page_effectif():
         
         st.markdown(f"<div style='color:#64748b;font-size:13px;margin:12px 0;'>{len(players)} joueurs</div>", unsafe_allow_html=True)
         
+        # En-têtes
+        st.markdown("""
+        <div style="display:grid;grid-template-columns:200px 80px repeat(5, 40px) 1fr;gap:8px;align-items:center;padding:8px 16px;color:#64748b;font-size:10px;font-weight:600;text-transform:uppercase;">
+            <span>Joueur</span>
+            <span style="text-align:center;">Statut</span>
+            <span style="text-align:center;">😴</span>
+            <span style="text-align:center;">🧠</span>
+            <span style="text-align:center;">💪</span>
+            <span style="text-align:center;">❤️</span>
+            <span style="text-align:center;">💚</span>
+            <span>💬 Remarque</span>
+        </div>
+        """, unsafe_allow_html=True)
+        
         for p in sorted(players, key=lambda x: x['name']):
             pd_data = {}
             if latest_date:
                 today_data = st.session_state.data.get(latest_date, [])
                 pd_data = next((d for d in today_data if d['name'] == p['name']), {})
             
-            avg = get_player_average(pd_data)
-            status_class = {'Apte': 'status-apte', 'Blessé': 'status-blesse', 'Réhabilitation': 'status-rehab', 'Réathlétisation': 'status-reath'}.get(p['status'], '')
+            status_colors = {'Apte': '#10b981', 'Blessé': '#ef4444', 'Réhabilitation': '#f59e0b', 'Réathlétisation': '#3b82f6'}
+            status_color = status_colors.get(p['status'], '#64748b')
             avatar_class = get_avatar_gradient(p['name'])
             
-            metrics_badges = ""
+            metrics_html = ""
             for m in METRICS:
                 val = pd_data.get(m['key'])
                 color = get_color_for_value(val)
-                metrics_badges += f'<span class="metric-badge" style="background:{color};">{int(val) if val else "-"}</span>'
+                metrics_html += f'<span style="display:inline-flex;align-items:center;justify-content:center;width:36px;height:36px;border-radius:8px;background:{color};color:white;font-weight:600;font-size:14px;">{int(val) if val else "-"}</span>'
             
-            col1, col2 = st.columns([5, 1])
+            # Remarque
+            remark = pd_data.get('remark', '')
+            remark_style = "color:#e2e8f0;background:rgba(99,102,241,0.15);padding:6px 10px;border-radius:6px;font-size:12px;" if remark else "color:#64748b;font-size:12px;"
+            
+            col1, col2 = st.columns([6, 1])
             
             with col1:
                 st.markdown(f"""
-                <div class="player-row">
-                    <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;">
-                        <div style="display:flex;align-items:center;gap:12px;">
-                            <div class="player-avatar {avatar_class}">{p['name'][0]}</div>
+                <div class="player-row" style="padding:10px 16px;">
+                    <div style="display:grid;grid-template-columns:200px 80px repeat(5, 40px) 1fr;gap:8px;align-items:center;">
+                        <div style="display:flex;align-items:center;gap:10px;">
+                            <div class="player-avatar {avatar_class}" style="width:38px;height:38px;font-size:16px;">{p['name'][0]}</div>
                             <div>
-                                <div style="font-weight:600;color:white;font-size:15px;">{p['name']}</div>
-                                <div style="font-size:12px;color:#64748b;">{p['position']} • {get_player_group(p['position'])} • {get_player_line(p['position'])}</div>
+                                <div style="font-weight:600;color:white;font-size:13px;">{p['name']}</div>
+                                <div style="font-size:10px;color:#64748b;">{p['position']}</div>
                             </div>
                         </div>
-                        <span class="status-badge {status_class}">{p['status']}</span>
-                        <div style="display:flex;gap:4px;">{metrics_badges}</div>
+                        <span style="display:inline-block;padding:4px 10px;border-radius:20px;font-size:10px;font-weight:600;background:{status_color};color:white;text-align:center;">{p['status']}</span>
+                        {metrics_html}
+                        <div style="{remark_style}" title="{remark}">{remark if remark else '-'}</div>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
@@ -3368,6 +3434,37 @@ def main():
             </div>
         </div>
         """, unsafe_allow_html=True)
+        
+        st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+        
+        # Indicateur de sauvegarde
+        if os.path.exists(DATA_FILE):
+            try:
+                file_mtime = os.path.getmtime(DATA_FILE)
+                save_time = datetime.fromtimestamp(file_mtime)
+                time_diff = datetime.now() - save_time
+                if time_diff.total_seconds() < 60:
+                    save_text = "à l'instant"
+                elif time_diff.total_seconds() < 3600:
+                    save_text = f"il y a {int(time_diff.total_seconds() / 60)} min"
+                else:
+                    save_text = save_time.strftime("%d/%m %H:%M")
+                
+                st.markdown(f"""
+                <div style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:8px;padding:10px;text-align:center;">
+                    <div style="font-size:11px;color:#10b981;">💾 Sauvegardé {save_text}</div>
+                </div>
+                """, unsafe_allow_html=True)
+            except:
+                pass
+        
+        # Bouton de sauvegarde manuelle
+        if st.button("💾 Sauvegarder", use_container_width=True, help="Sauvegarde manuelle des données"):
+            success, msg = save_data_to_file()
+            if success:
+                st.success("✅ Sauvegardé !")
+            else:
+                st.error(msg)
     
     # Navigation
     pages = {
