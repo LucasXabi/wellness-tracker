@@ -12,6 +12,8 @@ from datetime import datetime, timedelta
 import re
 import urllib.parse
 import calendar
+import json
+import os
 
 # ==================== CONFIG ====================
 st.set_page_config(
@@ -455,6 +457,78 @@ def init_session():
 
 init_session()
 
+
+# ==================== SAUVEGARDE / CHARGEMENT DONNÉES ====================
+DATA_FILE = "wellness_data.json"
+
+def save_data_to_file():
+    """Sauvegarde les données dans un fichier JSON"""
+    try:
+        data_to_save = {
+            'players': st.session_state.players,
+            'data': st.session_state.data,
+            'injuries': st.session_state.injuries,
+            'settings': st.session_state.settings,
+            'saved_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+        }
+        with open(DATA_FILE, 'w', encoding='utf-8') as f:
+            json.dump(data_to_save, f, ensure_ascii=False, indent=2)
+        return True, f"Données sauvegardées ({len(st.session_state.players)} joueurs, {len(st.session_state.data)} jours)"
+    except Exception as e:
+        return False, f"Erreur: {str(e)}"
+
+def load_data_from_file():
+    """Charge les données depuis un fichier JSON"""
+    try:
+        if not os.path.exists(DATA_FILE):
+            return False, "Aucune sauvegarde trouvée"
+        
+        with open(DATA_FILE, 'r', encoding='utf-8') as f:
+            loaded = json.load(f)
+        
+        st.session_state.players = loaded.get('players', [])
+        st.session_state.data = loaded.get('data', {})
+        st.session_state.injuries = loaded.get('injuries', [])
+        if 'settings' in loaded:
+            st.session_state.settings.update(loaded['settings'])
+        
+        saved_at = loaded.get('saved_at', 'inconnue')
+        return True, f"Données chargées ({len(st.session_state.players)} joueurs, {len(st.session_state.data)} jours) - Sauvegarde du {saved_at}"
+    except Exception as e:
+        return False, f"Erreur: {str(e)}"
+
+def export_data_to_json():
+    """Exporte les données en JSON pour téléchargement"""
+    data_to_export = {
+        'players': st.session_state.players,
+        'data': st.session_state.data,
+        'injuries': st.session_state.injuries,
+        'settings': st.session_state.settings,
+        'exported_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+    }
+    return json.dumps(data_to_export, ensure_ascii=False, indent=2)
+
+def import_data_from_json(json_content):
+    """Importe les données depuis un fichier JSON uploadé"""
+    try:
+        loaded = json.loads(json_content)
+        st.session_state.players = loaded.get('players', [])
+        st.session_state.data = loaded.get('data', {})
+        st.session_state.injuries = loaded.get('injuries', [])
+        if 'settings' in loaded:
+            st.session_state.settings.update(loaded['settings'])
+        return True, f"Import réussi: {len(st.session_state.players)} joueurs, {len(st.session_state.data)} jours"
+    except Exception as e:
+        return False, f"Erreur: {str(e)}"
+
+# Charger automatiquement les données au démarrage
+if 'data_loaded' not in st.session_state:
+    st.session_state.data_loaded = True
+    if os.path.exists(DATA_FILE):
+        success, msg = load_data_from_file()
+        if success:
+            print(f"✅ {msg}")  # Log dans la console
+
 # ==================== UTILITAIRES ====================
 def get_player_group(position):
     """Retourne le groupe (Avants/Trois-quarts) pour une position"""
@@ -834,18 +908,37 @@ def process_suivi_be_data(df, selected_dates=None, debug=False):
             col_indices['hdcState'] = start_col + 4
             col_indices['bdcState'] = start_col + 5
             # +6 serait Moyenne (on l'ignore)
-            # +7 serait Remarque, mais cherchons-la explicitement
+            # +7 serait Remarque
             
-            # Chercher la colonne Remarque (peut être à +6 ou +7)
-            for offset in range(6, 10):
+            # Chercher la colonne Remarque explicitement d'abord
+            remark_found = False
+            for offset in range(6, min(12, end_col - start_col)):
                 check_col = start_col + offset
-                if check_col < len(header_row_data):
+                if check_col < len(header_row_data) and check_col < end_col:
                     cell = header_row_data.iloc[check_col]
                     if pd.notna(cell):
                         cell_norm = normalize_text(cell)
-                        if 'remarque' in cell_norm or 'commentaire' in cell_norm:
+                        if 'remarque' in cell_norm or 'commentaire' in cell_norm or 'note' in cell_norm:
                             col_indices['remark'] = check_col
+                            remark_found = True
+                            if debug:
+                                st.write(f"  ✅ Remarque trouvée en colonne {check_col}")
                             break
+            
+            # Si pas trouvé par nom, utiliser la position par défaut
+            # La structure est: Joueur(+0) | Sommeil(+1) | Charge(+2) | Motivation(+3) | HDC(+4) | BDC(+5) | Moyenne(+6) | Remarque(+7)
+            if not remark_found:
+                # Essayer +7 (après Moyenne)
+                remark_col = start_col + 7
+                if remark_col < end_col and remark_col < len(header_row_data):
+                    col_indices['remark'] = remark_col
+                    if debug:
+                        st.write(f"  📝 Remarque assignée par position à colonne {remark_col}")
+                # Si la structure n'a pas de Moyenne, essayer +6
+                elif start_col + 6 < end_col:
+                    col_indices['remark'] = start_col + 6
+                    if debug:
+                        st.write(f"  📝 Remarque assignée par position à colonne {start_col + 6} (pas de Moyenne)")
             
             if debug:
                 st.write(f"  Colonnes mappées (par position): name={col_indices.get('name')}, sleep={col_indices.get('sleep')}, mentalLoad={col_indices.get('mentalLoad')}, motivation={col_indices.get('motivation')}, hdcState={col_indices.get('hdcState')}, bdcState={col_indices.get('bdcState')}, remark={col_indices.get('remark')}")
@@ -853,6 +946,7 @@ def process_suivi_be_data(df, selected_dates=None, debug=False):
             # Extraire les données des joueurs
             entries = []
             skipped_players = []
+            skipped_reasons = {}
             
             for row_idx in range(header_row_idx + 1, len(df)):
                 row = df.iloc[row_idx]
@@ -890,12 +984,17 @@ def process_suivi_be_data(df, selected_dates=None, debug=False):
                                    'inflamm', 'entorse', 'foulure', 'claquage', 'déchir', 'rechute']
                 
                 # Si le nom est trop long (> 25 caractères) ou contient des mots-clés de remarque, c'est probablement une remarque
+                skip_reason = None
                 if len(name) > 25:
-                    continue
-                if any(kw in name_lower for kw in remark_keywords):
-                    continue
-                # Si le nom contient des espaces multiples ou ressemble à une phrase
-                if name.count(' ') > 2:
+                    skip_reason = f"nom trop long ({len(name)} chars)"
+                elif any(kw in name_lower for kw in remark_keywords):
+                    matched_kw = [kw for kw in remark_keywords if kw in name_lower]
+                    skip_reason = f"mot-clé remarque: {matched_kw[0]}"
+                elif name.count(' ') > 2:
+                    skip_reason = f"trop d'espaces ({name.count(' ')})"
+                
+                if skip_reason:
+                    skipped_reasons[name] = skip_reason
                     continue
                 
                 # Créer le joueur s'il n'existe pas
@@ -944,6 +1043,10 @@ def process_suivi_be_data(df, selected_dates=None, debug=False):
             
             if debug:
                 st.write(f"  → {len(entries)} joueurs avec données")
+                if skipped_reasons:
+                    with st.expander(f"⚠️ {len(skipped_reasons)} noms filtrés (pas des joueurs)"):
+                        for name, reason in list(skipped_reasons.items())[:10]:
+                            st.write(f"  • `{name}` - {reason}")
                 if skipped_players and len(skipped_players) <= 5:
                     st.write(f"  ⚠️ Joueurs sans métriques valides: {skipped_players}")
                 elif skipped_players:
@@ -1099,8 +1202,8 @@ def process_imported_data(df, debug=False):
             name_col = col_indices.get('name', 0)
             weight_col = col_indices.get('weight', name_col + 1)
             
-            # Ordre standard: Poids, Sommeil, Charge mentale, Motivation, HDC, BDC
-            expected_order = ['weight', 'sleep', 'mentalLoad', 'motivation', 'hdcState', 'bdcState']
+            # Ordre standard: Poids, Sommeil, Charge mentale, Motivation, HDC, BDC, Remarque
+            expected_order = ['weight', 'sleep', 'mentalLoad', 'motivation', 'hdcState', 'bdcState', 'remark']
             current_col = name_col + 1
             
             for metric in expected_order:
@@ -1109,6 +1212,15 @@ def process_imported_data(df, debug=False):
                     if debug:
                         st.write(f"  → {metric} assigné à la colonne {current_col}")
                 current_col += 1
+        
+        # Ajouter la remarque par position si pas trouvée
+        if 'remark' not in col_indices:
+            # La remarque est généralement la dernière colonne après BDC
+            last_metric_col = max([col_indices.get(k, 0) for k in ['sleep', 'mentalLoad', 'motivation', 'hdcState', 'bdcState'] if k in col_indices], default=0)
+            if last_metric_col > 0:
+                col_indices['remark'] = last_metric_col + 1
+                if debug:
+                    st.write(f"  → remark assigné à la colonne {col_indices['remark']} (après dernière métrique)")
         
         # 4. Extraire les données (lignes après l'en-tête)
         entries = []
@@ -2418,6 +2530,11 @@ def page_import():
                                 - 📊 {result['entries']} entrées au total
                                 """)
                                 
+                                # Auto-save après import
+                                save_success, save_msg = save_data_to_file()
+                                if save_success:
+                                    st.info(f"💾 {save_msg}")
+                                
                                 with st.expander("📋 Détail des dates importées"):
                                     for d in result['dates_imported']:
                                         st.write(f"• {d}")
@@ -2485,6 +2602,10 @@ def page_import():
                 if result['success']:
                     st.balloons()
                     st.success(f"✅ Import réussi ! {result['entries']} joueurs pour le {format_date(result['date'], 'full')}")
+                    # Auto-save après import
+                    save_success, save_msg = save_data_to_file()
+                    if save_success:
+                        st.info(f"💾 {save_msg}")
                 else:
                     st.error(f"❌ {result['error']}")
         except Exception as e:
@@ -2525,6 +2646,87 @@ def page_import():
                 st.metric("📅 Jours", len(st.session_state.data))
         
         st.markdown("</div>", unsafe_allow_html=True)
+    
+    st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
+    
+    # === SAUVEGARDE / CHARGEMENT ===
+    st.markdown("""
+    <div class="premium-card">
+        <h3 style="color:white;margin-bottom:8px;">💾 Sauvegarde & Restauration</h3>
+        <p style="color:#94a3b8;font-size:13px;margin-bottom:20px;">
+            Sauvegardez vos données pour les conserver entre les sessions. Les poids de forme, positions et toutes les données seront préservés.
+        </p>
+    """, unsafe_allow_html=True)
+    
+    col_save1, col_save2 = st.columns(2)
+    
+    with col_save1:
+        st.markdown("#### 💾 Sauvegarde rapide")
+        if st.button("💾 Sauvegarder maintenant", type="primary", use_container_width=True, key="save_data"):
+            success, msg = save_data_to_file()
+            if success:
+                st.success(f"✅ {msg}")
+            else:
+                st.error(f"❌ {msg}")
+        
+        # Afficher info dernière sauvegarde
+        if os.path.exists(DATA_FILE):
+            mod_time = datetime.fromtimestamp(os.path.getmtime(DATA_FILE))
+            st.caption(f"📅 Dernière sauvegarde: {mod_time.strftime('%d/%m/%Y à %H:%M')}")
+        
+        st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+        
+        if st.button("📂 Charger la sauvegarde", use_container_width=True, key="load_data"):
+            success, msg = load_data_from_file()
+            if success:
+                st.success(f"✅ {msg}")
+                st.rerun()
+            else:
+                st.warning(f"⚠️ {msg}")
+    
+    with col_save2:
+        st.markdown("#### 📦 Export / Import JSON")
+        
+        # Export JSON (téléchargement)
+        if st.session_state.data or st.session_state.players:
+            json_data = export_data_to_json()
+            st.download_button(
+                "📥 Télécharger backup JSON",
+                json_data,
+                f"wellness_backup_{datetime.now().strftime('%Y%m%d')}.json",
+                "application/json",
+                use_container_width=True
+            )
+        
+        st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
+        
+        # Import JSON (upload)
+        uploaded_json = st.file_uploader("📤 Restaurer depuis JSON", type=['json'], key="json_upload")
+        if uploaded_json:
+            if st.button("🔄 Importer ce fichier", type="primary", use_container_width=True):
+                content = uploaded_json.read().decode('utf-8')
+                success, msg = import_data_from_json(content)
+                if success:
+                    st.success(f"✅ {msg}")
+                    st.rerun()
+                else:
+                    st.error(f"❌ {msg}")
+    
+    st.markdown("</div>", unsafe_allow_html=True)
+    
+    # Info stats actuelles
+    if st.session_state.players or st.session_state.data:
+        st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+        col_stat1, col_stat2, col_stat3, col_stat4 = st.columns(4)
+        with col_stat1:
+            st.metric("👥 Joueurs", len(st.session_state.players))
+        with col_stat2:
+            st.metric("📅 Jours de données", len(st.session_state.data))
+        with col_stat3:
+            total_entries = sum(len(e) for e in st.session_state.data.values())
+            st.metric("📊 Entrées totales", total_entries)
+        with col_stat4:
+            st.metric("🏥 Blessures actives", len([i for i in st.session_state.injuries if i.get('status') == 'Active']))
 
 
 def page_effectif():
@@ -2905,9 +3107,48 @@ def page_joueurs():
                             player['status'] = new_status
             
             with col5:
-                if st.button("🗑️", key=f"del_{p['id']}", help="Supprimer ce joueur"):
-                    st.session_state.players = [x for x in st.session_state.players if x['id'] != p['id']]
-                    st.rerun()
+                # Confirmation de suppression
+                confirm_key = f"confirm_del_{p['id']}"
+                if confirm_key not in st.session_state:
+                    st.session_state[confirm_key] = False
+                
+                if st.session_state[confirm_key]:
+                    # Mode confirmation - afficher les boutons confirmer/annuler
+                    btn_cols = st.columns(2)
+                    with btn_cols[0]:
+                        if st.button("✅", key=f"confirm_{p['id']}", help="Confirmer"):
+                            st.session_state.players = [x for x in st.session_state.players if x['id'] != p['id']]
+                            # Nettoyer aussi les données du joueur
+                            for date in st.session_state.data:
+                                st.session_state.data[date] = [e for e in st.session_state.data[date] if e.get('name') != p['name']]
+                            st.session_state[confirm_key] = False
+                            # Auto-save après suppression
+                            save_data_to_file()
+                            st.success(f"✅ {p['name']} supprimé")
+                            st.rerun()
+                    with btn_cols[1]:
+                        if st.button("❌", key=f"cancel_{p['id']}", help="Annuler"):
+                            st.session_state[confirm_key] = False
+                            st.rerun()
+                else:
+                    if st.button("🗑️", key=f"del_{p['id']}", help="Supprimer ce joueur"):
+                        st.session_state[confirm_key] = True
+                        st.rerun()
+        
+        # Message pour annuler les confirmations en attente
+        pending_deletions = [k for k in st.session_state if k.startswith("confirm_del_") and st.session_state[k]]
+        if pending_deletions:
+            st.warning("⚠️ Cliquez sur ✅ pour confirmer ou ❌ pour annuler la suppression")
+        
+        st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
+        
+        # Bouton sauvegarde rapide
+        if st.button("💾 Sauvegarder les modifications", type="primary", use_container_width=True):
+            success, msg = save_data_to_file()
+            if success:
+                st.success(f"✅ {msg}")
+            else:
+                st.error(f"❌ {msg}")
     else:
         st.info("Aucun joueur. Importez des données ou ajoutez des joueurs manuellement.")
 
