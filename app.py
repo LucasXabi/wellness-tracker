@@ -972,16 +972,18 @@ def process_suivi_be_data(df, selected_dates=None, debug=False):
                 
                 # Ignorer si le "nom" ressemble à une remarque (trop long ou contient des mots-clés)
                 name_lower = name.lower()
-                remark_keywords = ['douleur', 'courbature', 'fatigue', 'mal ', 'stress', 'crampe', 
-                                   'blessure', 'gêne', 'tension', 'repos', 'sommeil', 'mieux', 
+                # Mots-clés de remarque - éviter les mots courts qui peuvent matcher des noms
+                remark_keywords = ['douleur', 'courbature', 'fatigue', 'stress', 'crampe', 
+                                   'blessure', 'tension', 'repos', 'sommeil', 'mieux', 
                                    'moins bien', 'récupération', 'entraînement', 'match', 'vacances',
-                                   'ça va', 'ca va', 'rien à signaler', 'ras', 'ok', 'forme',
-                                   'léger', 'leger', 'petit', 'un peu', 'sensation', 'genou',
-                                   'cheville', 'dos', 'épaule', 'epaule', 'mollet', 'ischio',
-                                   'cuisse', 'adducteur', 'pied', 'jambe', 'bras', 'muscle',
+                                   'ça va', 'ca va', 'rien à signaler', 'forme physique',
+                                   'léger', 'leger', 'petit souci', 'un peu', 'sensation', 'genou',
+                                   'cheville', 'épaule', 'epaule', 'mollet', 'ischio',
+                                   'cuisse', 'adducteur', 'pied', 'jambe', 'muscle',
                                    'lésion', 'lesion', 'soucis', 'souci', 'problème', 'probleme',
                                    'gêné', 'gene', 'douloureux', 'tendu', 'raide', 'contracture',
-                                   'inflamm', 'entorse', 'foulure', 'claquage', 'déchir', 'rechute']
+                                   'inflamm', 'entorse', 'foulure', 'claquage', 'déchir', 'rechute',
+                                   'toujours', 'encore', 'hier', 'ce matin', 'cette nuit']
                 
                 # Si le nom est trop long (> 25 caractères) ou contient des mots-clés de remarque, c'est probablement une remarque
                 skip_reason = None
@@ -1066,6 +1068,9 @@ def process_suivi_be_data(df, selected_dates=None, debug=False):
                 dates_imported.append(block['date_str'])
         
         if dates_imported:
+            # AUTO-SAVE après import réussi
+            save_data_to_file()
+            
             return {
                 'success': True,
                 'mode': 'imported',
@@ -1198,29 +1203,37 @@ def process_imported_data(df, debug=False):
             if debug:
                 st.warning("⚠️ Peu de colonnes métriques trouvées, tentative de mapping par position...")
             
-            # Supposer un ordre standard après 'name' et 'weight'
+            # Supposer un ordre standard après 'name'
+            # Structure: Joueur | Poids | Sommeil | Charge | Motivation | HDC | BDC | Moyenne | Remarque
+            #              +0      +1      +2        +3        +4         +5    +6     +7        +8
             name_col = col_indices.get('name', 0)
-            weight_col = col_indices.get('weight', name_col + 1)
             
-            # Ordre standard: Poids, Sommeil, Charge mentale, Motivation, HDC, BDC, Remarque
-            expected_order = ['weight', 'sleep', 'mentalLoad', 'motivation', 'hdcState', 'bdcState', 'remark']
-            current_col = name_col + 1
+            position_map = {
+                'weight': name_col + 1,
+                'sleep': name_col + 2,
+                'mentalLoad': name_col + 3,
+                'motivation': name_col + 4,
+                'hdcState': name_col + 5,
+                'bdcState': name_col + 6,
+                # +7 = Moyenne (on l'ignore)
+                'remark': name_col + 8
+            }
             
-            for metric in expected_order:
+            for metric, pos in position_map.items():
                 if metric not in col_indices:
-                    col_indices[metric] = current_col
+                    col_indices[metric] = pos
                     if debug:
-                        st.write(f"  → {metric} assigné à la colonne {current_col}")
-                current_col += 1
+                        st.write(f"  → {metric} assigné à la colonne {pos}")
         
         # Ajouter la remarque par position si pas trouvée
         if 'remark' not in col_indices:
-            # La remarque est généralement la dernière colonne après BDC
+            # La remarque est après BDC + Moyenne, donc +2
             last_metric_col = max([col_indices.get(k, 0) for k in ['sleep', 'mentalLoad', 'motivation', 'hdcState', 'bdcState'] if k in col_indices], default=0)
             if last_metric_col > 0:
-                col_indices['remark'] = last_metric_col + 1
+                # +1 serait Moyenne, +2 est Remarque
+                col_indices['remark'] = last_metric_col + 2
                 if debug:
-                    st.write(f"  → remark assigné à la colonne {col_indices['remark']} (après dernière métrique)")
+                    st.write(f"  → remark assigné à la colonne {col_indices['remark']} (après Moyenne)")
         
         # 4. Extraire les données (lignes après l'en-tête)
         entries = []
@@ -1254,16 +1267,19 @@ def process_imported_data(df, debug=False):
             
             # Ignorer si le "nom" ressemble à une remarque (trop long ou contient des mots-clés)
             name_lower = name.lower()
-            remark_keywords = ['douleur', 'courbature', 'fatigue', 'mal ', 'stress', 'crampe', 
-                               'blessure', 'gêne', 'tension', 'repos', 'sommeil', 'mieux', 
+            # Mots-clés de remarque - éviter les mots courts qui peuvent matcher des noms
+            # (ex: "ok" matchait KOLOKILAGI, "dos" pourrait matcher DOS SANTOS)
+            remark_keywords = ['douleur', 'courbature', 'fatigue', 'stress', 'crampe', 
+                               'blessure', 'tension', 'repos', 'sommeil', 'mieux', 
                                'moins bien', 'récupération', 'entraînement', 'match', 'vacances',
-                               'ça va', 'ca va', 'rien à signaler', 'ras', 'ok', 'forme',
-                               'léger', 'leger', 'petit', 'un peu', 'sensation', 'genou',
-                               'cheville', 'dos', 'épaule', 'epaule', 'mollet', 'ischio',
-                               'cuisse', 'adducteur', 'pied', 'jambe', 'bras', 'muscle',
+                               'ça va', 'ca va', 'rien à signaler', 'forme physique',
+                               'léger', 'leger', 'petit souci', 'un peu', 'sensation', 'genou',
+                               'cheville', 'épaule', 'epaule', 'mollet', 'ischio',
+                               'cuisse', 'adducteur', 'pied', 'jambe', 'muscle',
                                'lésion', 'lesion', 'soucis', 'souci', 'problème', 'probleme',
                                'gêné', 'gene', 'douloureux', 'tendu', 'raide', 'contracture',
-                               'inflamm', 'entorse', 'foulure', 'claquage', 'déchir', 'rechute']
+                               'inflamm', 'entorse', 'foulure', 'claquage', 'déchir', 'rechute',
+                               'toujours', 'encore', 'hier', 'ce matin', 'cette nuit']
             if len(name) > 25 or any(kw in name_lower for kw in remark_keywords) or name.count(' ') > 2:
                 if debug:
                     skipped_rows.append(f"Ligne {row_idx}: '{name}' (ressemble à une remarque)")
@@ -1338,6 +1354,8 @@ def process_imported_data(df, debug=False):
         
         if entries:
             st.session_state.data[date_found] = entries
+            # AUTO-SAVE après import réussi
+            save_data_to_file()
             return {
                 'success': True,
                 'date': date_found,
@@ -2181,7 +2199,7 @@ def page_dashboard():
         </div>
         """, unsafe_allow_html=True)
         
-        for row in rows:
+        for idx, row in enumerate(rows):
             # Métriques badges
             metrics_html = ""
             for m in METRICS:
@@ -2207,11 +2225,17 @@ def page_dashboard():
             # Poids
             weight_str = f"{row['weight']:.1f}" if row['weight'] else "-"
             
-            # Remarque - bien visible
-            remark_display = row['remark'] if row['remark'] else ""
-            remark_style = "color:#94a3b8;" if not row['remark'] else "color:#e2e8f0;background:rgba(99,102,241,0.15);padding:4px 8px;border-radius:6px;"
+            # Remarque - tronquer pour affichage
+            remark_full = row['remark'] if row['remark'] else ""
+            remark_truncated = remark_full[:40] + "..." if len(remark_full) > 40 else remark_full
+            has_long_remark = len(remark_full) > 40
+            remark_style = "color:#94a3b8;" if not remark_full else "color:#e2e8f0;background:rgba(99,102,241,0.15);padding:4px 8px;border-radius:6px;"
             
-            col1, col2 = st.columns([6, 1])
+            # Layout: info joueur | bouton fiche | bouton remarque (si longue)
+            if has_long_remark:
+                col1, col2, col3 = st.columns([5.5, 0.8, 0.7])
+            else:
+                col1, col2 = st.columns([6, 1])
             
             with col1:
                 st.markdown(f"""
@@ -2229,14 +2253,21 @@ def page_dashboard():
                         {metrics_html}
                         <span style="display:inline-flex;align-items:center;justify-content:center;width:40px;height:36px;border-radius:8px;background:{avg_color};color:white;font-weight:600;font-size:13px;">{avg_str}</span>
                         <span style="text-align:center;min-width:45px;">{diff_str}</span>
-                        <div style="{remark_style}font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{row['remark']}">{remark_display}</div>
+                        <div style="{remark_style}font-size:11px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;cursor:{'pointer' if has_long_remark else 'default'};" title="{remark_full}">{remark_truncated}</div>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
             
             with col2:
-                if st.button("👁️ Fiche", key=f"btn_{row['name']}", use_container_width=True):
+                if st.button("👁️ Fiche", key=f"btn_{row['name']}_{idx}", use_container_width=True):
                     show_player_modal(player_ids[row['name']])
+            
+            # Bouton pour voir la remarque complète si elle est longue
+            if has_long_remark:
+                with col3:
+                    with st.popover("💬", use_container_width=True):
+                        st.markdown(f"**{row['name']}** - Remarque")
+                        st.markdown(f"<div style='background:rgba(99,102,241,0.1);padding:12px;border-radius:8px;color:#e2e8f0;font-size:13px;line-height:1.5;'>{remark_full}</div>", unsafe_allow_html=True)
     else:
         st.info("Aucun joueur ne correspond aux filtres sélectionnés.")
     
