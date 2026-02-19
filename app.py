@@ -473,6 +473,7 @@ def save_data_to_file():
         }
         with open(DATA_FILE, 'w', encoding='utf-8') as f:
             json.dump(data_to_save, f, ensure_ascii=False, indent=2)
+        st.session_state.last_save_time = datetime.now()
         return True, f"Données sauvegardées ({len(st.session_state.players)} joueurs, {len(st.session_state.data)} jours)"
     except Exception as e:
         return False, f"Erreur: {str(e)}"
@@ -517,13 +518,44 @@ def import_data_from_json(json_content):
         st.session_state.injuries = loaded.get('injuries', [])
         if 'settings' in loaded:
             st.session_state.settings.update(loaded['settings'])
+        # Sauvegarder immédiatement après import
+        save_data_to_file()
         return True, f"Import réussi: {len(st.session_state.players)} joueurs, {len(st.session_state.data)} jours"
     except Exception as e:
         return False, f"Erreur: {str(e)}"
 
+def save_to_google_sheets(sheet_url):
+    """Sauvegarde les données dans un Google Sheet (comme backup persistant)"""
+    try:
+        # Extraire l'ID du sheet
+        if '/d/' in sheet_url:
+            sheet_id = sheet_url.split('/d/')[1].split('/')[0]
+        else:
+            return False, "URL Google Sheet invalide"
+        
+        # Préparer les données pour export
+        export_url = f"https://docs.google.com/spreadsheets/d/{sheet_id}/gviz/tq?tqx=out:csv&sheet=Backup"
+        
+        # Note: L'écriture dans Google Sheets nécessite une authentification OAuth
+        # Pour l'instant, on génère un CSV que l'utilisateur peut copier-coller
+        return False, "Pour sauvegarder dans Google Sheets, téléchargez le backup JSON et importez-le manuellement."
+        
+    except Exception as e:
+        return False, f"Erreur: {str(e)}"
+
+def get_backup_reminder():
+    """Vérifie si un rappel de backup est nécessaire"""
+    if 'last_save_time' not in st.session_state:
+        return True  # Jamais sauvegardé
+    
+    time_since_save = datetime.now() - st.session_state.last_save_time
+    # Rappeler après 30 minutes d'activité
+    return time_since_save.total_seconds() > 1800
+
 # Charger automatiquement les données au démarrage
 if 'data_loaded' not in st.session_state:
     st.session_state.data_loaded = True
+    st.session_state.last_save_time = datetime.now()
     if os.path.exists(DATA_FILE):
         success, msg = load_data_from_file()
         if success:
@@ -976,44 +1008,55 @@ def process_suivi_be_data(df, selected_dates=None, debug=False):
                     # Expressions de douleur/blessure
                     'douleur', 'courbature', 'fatigue', 'crampe', 'blessure', 
                     'contracture', 'entorse', 'foulure', 'claquage', 'déchir',
-                    'inflamm', 'tendinite', 'élongation',
+                    'inflamm', 'tendinite', 'élongation', 'lésion', 'lesion',
                     # Parties du corps (comme début de remarque)
                     'genou droit', 'genou gauche', 'cheville', 'épaule', 'mollet',
                     'ischio', 'cuisse', 'adducteur', 'quadri', 'dos bloqué',
+                    'kyste', 'hernie', 'pubis', 'lombes', 'lombaire',
                     # États
                     'pas en forme', 'fatigué', 'malade', 'grippé', 'épuisé',
+                    'mieux', 'soucis', 'souci', 'problème', 'probleme',
                     # Actions/situations
                     'rien à signaler', 'tout va bien', 'en forme', 'récupération',
                     'au repos', 'absent', 'indisponible',
                     # Temporels (indiquent une remarque contextuelle)
-                    'ce matin', 'cette nuit', 'hier soir', 'depuis', 'toujours mal',
-                    'encore douloureux', 'toujours gêné',
+                    'ce matin', 'cette nuit', 'hier soir', 'depuis', 'toujours',
+                    'encore', 'gêné', 'gene',
                     # Phrases types
                     'mal au', 'mal à la', 'mal aux', 'douleur au', 'gêne au',
                     'sensation de', 'léger problème', 'petit souci'
                 ]
                 
-                # Un nom ne doit PAS être filtré si :
-                # - C'est un nom court (< 15 chars) sans pattern de remarque évident
-                # - C'est en majuscules (les noms sont souvent en majuscules)
-                is_likely_name = (
-                    len(name) < 15 and 
-                    name.count(' ') <= 1 and
-                    name.isupper()
-                )
+                # RÈGLE PRINCIPALE: Les noms de joueurs sont en MAJUSCULES
+                # Si le texte n'est pas en majuscules, c'est probablement une remarque
+                def is_valid_player_name(text):
+                    """Vérifie si le texte ressemble à un nom de joueur"""
+                    # Doit être principalement en majuscules (au moins 80%)
+                    upper_chars = sum(1 for c in text if c.isupper())
+                    alpha_chars = sum(1 for c in text if c.isalpha())
+                    if alpha_chars == 0:
+                        return False
+                    uppercase_ratio = upper_chars / alpha_chars
+                    
+                    # Critères:
+                    # 1. Au moins 80% majuscules OU entièrement en majuscules
+                    # 2. Pas trop long (max 25 caractères)
+                    # 3. Pas trop d'espaces (max 2 pour les noms composés)
+                    return (
+                        (uppercase_ratio >= 0.8 or text.isupper()) and
+                        len(text) <= 25 and
+                        text.count(' ') <= 2
+                    )
                 
-                # Vérifier si ça ressemble à une remarque
                 skip_reason = None
-                if len(name) > 30:  # Plus permissif (30 au lieu de 25)
-                    skip_reason = f"texte trop long ({len(name)} chars)"
-                elif name.count(' ') > 3:  # Plus permissif (3 au lieu de 2)
-                    skip_reason = f"trop d'espaces ({name.count(' ')})"
-                elif not is_likely_name:
-                    # Vérifier les patterns seulement si ce n'est pas clairement un nom
-                    for pattern in remark_patterns:
-                        if pattern in name_lower:
-                            skip_reason = f"ressemble à remarque: '{pattern}'"
-                            break
+                
+                # Vérifier si c'est un nom valide (MAJUSCULES)
+                if not is_valid_player_name(name):
+                    skip_reason = f"pas en majuscules (nom invalide)"
+                # Vérifier les patterns de remarque
+                elif any(pattern in name_lower for pattern in remark_patterns):
+                    matched = [p for p in remark_patterns if p in name_lower]
+                    skip_reason = f"pattern remarque: '{matched[0]}'"
                 
                 if skip_reason:
                     skipped_reasons[name] = skip_reason
@@ -1293,35 +1336,49 @@ def process_imported_data(df, debug=False):
             remark_patterns = [
                 'douleur', 'courbature', 'fatigue', 'crampe', 'blessure', 
                 'contracture', 'entorse', 'foulure', 'claquage', 'déchir',
-                'inflamm', 'tendinite', 'élongation',
+                'inflamm', 'tendinite', 'élongation', 'lésion', 'lesion',
                 'genou droit', 'genou gauche', 'cheville', 'épaule', 'mollet',
                 'ischio', 'cuisse', 'adducteur', 'quadri', 'dos bloqué',
+                'kyste', 'hernie', 'pubis', 'lombes', 'lombaire',
                 'pas en forme', 'fatigué', 'malade', 'grippé', 'épuisé',
+                'mieux', 'soucis', 'souci', 'problème', 'probleme',
                 'rien à signaler', 'tout va bien', 'en forme', 'récupération',
                 'au repos', 'absent', 'indisponible',
-                'ce matin', 'cette nuit', 'hier soir', 'depuis', 'toujours mal',
-                'encore douloureux', 'toujours gêné',
+                'ce matin', 'cette nuit', 'hier soir', 'depuis', 'toujours',
+                'encore', 'gêné', 'gene',
                 'mal au', 'mal à la', 'mal aux', 'douleur au', 'gêne au',
                 'sensation de', 'léger problème', 'petit souci'
             ]
             
-            # Un nom en majuscules court est probablement un vrai nom
-            is_likely_name = len(name) < 15 and name.count(' ') <= 1 and name.isupper()
+            # RÈGLE PRINCIPALE: Les noms de joueurs sont en MAJUSCULES
+            def is_valid_player_name(text):
+                """Vérifie si le texte ressemble à un nom de joueur"""
+                upper_chars = sum(1 for c in text if c.isupper())
+                alpha_chars = sum(1 for c in text if c.isalpha())
+                if alpha_chars == 0:
+                    return False
+                uppercase_ratio = upper_chars / alpha_chars
+                return (
+                    (uppercase_ratio >= 0.8 or text.isupper()) and
+                    len(text) <= 25 and
+                    text.count(' ') <= 2
+                )
             
             skip_as_remark = False
-            if len(name) > 30:
+            skip_reason = ""
+            
+            # Vérifier si c'est un nom valide (MAJUSCULES)
+            if not is_valid_player_name(name):
                 skip_as_remark = True
-            elif name.count(' ') > 3:
+                skip_reason = "pas en majuscules"
+            # Vérifier les patterns de remarque
+            elif any(pattern in name_lower for pattern in remark_patterns):
                 skip_as_remark = True
-            elif not is_likely_name:
-                for pattern in remark_patterns:
-                    if pattern in name_lower:
-                        skip_as_remark = True
-                        break
+                skip_reason = "pattern remarque détecté"
             
             if skip_as_remark:
                 if debug:
-                    skipped_rows.append(f"Ligne {row_idx}: '{name}' (ressemble à une remarque)")
+                    skipped_rows.append(f"Ligne {row_idx}: '{name}' ({skip_reason})")
                 continue
             
             # Ignorer les lignes qui semblent être des erreurs Excel (#DIV/0!, etc.)
@@ -2729,66 +2786,71 @@ def page_import():
     
     # === SAUVEGARDE / CHARGEMENT ===
     st.markdown("""
-    <div class="premium-card">
+    <div class="premium-card" style="border:2px solid rgba(245,158,11,0.3);background:linear-gradient(135deg,rgba(245,158,11,0.05),rgba(0,0,0,0));">
         <h3 style="color:white;margin-bottom:8px;">💾 Sauvegarde & Restauration</h3>
-        <p style="color:#94a3b8;font-size:13px;margin-bottom:20px;">
-            Sauvegardez vos données pour les conserver entre les sessions. Les poids de forme, positions et toutes les données seront préservés.
-        </p>
+        <div style="background:rgba(245,158,11,0.1);border-radius:8px;padding:12px;margin-bottom:16px;">
+            <p style="color:#fbbf24;font-size:13px;margin:0;font-weight:600;">
+                ⚠️ IMPORTANT: Les données peuvent être perdues si l'application redémarre !
+            </p>
+            <p style="color:#94a3b8;font-size:12px;margin:8px 0 0 0;">
+                Pour ne jamais perdre vos données : <strong style="color:white;">téléchargez régulièrement un backup JSON</strong> 
+                et restaurez-le au prochain démarrage.
+            </p>
+        </div>
     """, unsafe_allow_html=True)
     
-    col_save1, col_save2 = st.columns(2)
+    # Restore en premier - plus important
+    col_restore, col_save = st.columns(2)
     
-    with col_save1:
-        st.markdown("#### 💾 Sauvegarde rapide")
-        if st.button("💾 Sauvegarder maintenant", type="primary", use_container_width=True, key="save_data"):
-            success, msg = save_data_to_file()
-            if success:
-                st.success(f"✅ {msg}")
-            else:
-                st.error(f"❌ {msg}")
+    with col_restore:
+        st.markdown("#### 🔄 Restaurer mes données")
+        st.markdown("<p style='color:#94a3b8;font-size:12px;'>Chargez votre dernier backup JSON</p>", unsafe_allow_html=True)
         
-        # Afficher info dernière sauvegarde
-        if os.path.exists(DATA_FILE):
-            mod_time = datetime.fromtimestamp(os.path.getmtime(DATA_FILE))
-            st.caption(f"📅 Dernière sauvegarde: {mod_time.strftime('%d/%m/%Y à %H:%M')}")
-        
-        st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
-        
-        if st.button("📂 Charger la sauvegarde", use_container_width=True, key="load_data"):
-            success, msg = load_data_from_file()
-            if success:
-                st.success(f"✅ {msg}")
-                st.rerun()
-            else:
-                st.warning(f"⚠️ {msg}")
-    
-    with col_save2:
-        st.markdown("#### 📦 Export / Import JSON")
-        
-        # Export JSON (téléchargement)
-        if st.session_state.data or st.session_state.players:
-            json_data = export_data_to_json()
-            st.download_button(
-                "📥 Télécharger backup JSON",
-                json_data,
-                f"wellness_backup_{datetime.now().strftime('%Y%m%d')}.json",
-                "application/json",
-                use_container_width=True
-            )
-        
-        st.markdown("<div style='height:12px'></div>", unsafe_allow_html=True)
-        
-        # Import JSON (upload)
-        uploaded_json = st.file_uploader("📤 Restaurer depuis JSON", type=['json'], key="json_upload")
+        uploaded_json = st.file_uploader("", type=['json'], key="json_upload", label_visibility="collapsed")
         if uploaded_json:
-            if st.button("🔄 Importer ce fichier", type="primary", use_container_width=True):
+            st.info(f"📄 Fichier: {uploaded_json.name}")
+            if st.button("✅ Restaurer ce backup", type="primary", use_container_width=True):
                 content = uploaded_json.read().decode('utf-8')
                 success, msg = import_data_from_json(content)
                 if success:
                     st.success(f"✅ {msg}")
+                    st.balloons()
                     st.rerun()
                 else:
                     st.error(f"❌ {msg}")
+        else:
+            st.caption("👆 Glissez votre fichier backup .json ici")
+    
+    with col_save:
+        st.markdown("#### 📥 Sauvegarder mes données")
+        st.markdown("<p style='color:#94a3b8;font-size:12px;'>Téléchargez un backup sur votre ordinateur</p>", unsafe_allow_html=True)
+        
+        if st.session_state.data or st.session_state.players:
+            json_data = export_data_to_json()
+            
+            # Stats du backup
+            st.markdown(f"""
+            <div style="background:rgba(16,185,129,0.1);border-radius:8px;padding:10px;margin-bottom:12px;">
+                <div style="display:flex;justify-content:space-around;text-align:center;">
+                    <div><span style="color:#10b981;font-weight:bold;">{len(st.session_state.players)}</span><br><span style="font-size:10px;color:#64748b;">joueurs</span></div>
+                    <div><span style="color:#10b981;font-weight:bold;">{len(st.session_state.data)}</span><br><span style="font-size:10px;color:#64748b;">jours</span></div>
+                    <div><span style="color:#10b981;font-weight:bold;">{sum(len(e) for e in st.session_state.data.values())}</span><br><span style="font-size:10px;color:#64748b;">entrées</span></div>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            st.download_button(
+                "📥 Télécharger le backup complet",
+                json_data,
+                f"wellness_backup_{datetime.now().strftime('%Y%m%d_%H%M')}.json",
+                "application/json",
+                use_container_width=True,
+                type="primary"
+            )
+            
+            st.caption("💡 Conseil: Téléchargez un backup après chaque session de travail")
+        else:
+            st.info("Aucune donnée à sauvegarder. Importez d'abord des données.")
     
     st.markdown("</div>", unsafe_allow_html=True)
     
@@ -3458,6 +3520,8 @@ def main():
             except:
                 pass
         
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        
         # Bouton de sauvegarde manuelle
         if st.button("💾 Sauvegarder", use_container_width=True, help="Sauvegarde manuelle des données"):
             success, msg = save_data_to_file()
@@ -3465,6 +3529,27 @@ def main():
                 st.success("✅ Sauvegardé !")
             else:
                 st.error(msg)
+        
+        # Télécharger backup - IMPORTANT pour persistance
+        if st.session_state.data or st.session_state.players:
+            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+            json_backup = export_data_to_json()
+            st.download_button(
+                "📥 Télécharger backup",
+                json_backup,
+                f"wellness_backup_{datetime.now().strftime('%Y%m%d_%H%M')}.json",
+                "application/json",
+                use_container_width=True,
+                help="⚠️ IMPORTANT: Téléchargez régulièrement pour ne pas perdre vos données!"
+            )
+            
+            st.markdown("""
+            <div style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:8px;padding:8px;margin-top:8px;">
+                <div style="font-size:10px;color:#f59e0b;text-align:center;">
+                    ⚠️ Téléchargez un backup<br>pour ne pas perdre vos données
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
     
     # Navigation
     pages = {
