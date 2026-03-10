@@ -469,16 +469,15 @@ def save_data_to_file():
             'players': st.session_state.players,
             'data': st.session_state.data,
             'injuries': st.session_state.injuries,
-            'settings': {k: v for k, v in st.session_state.settings.items() if not k.startswith('supabase_')},
+            'settings': {k: v for k, v in st.session_state.settings.items() if not k.startswith('cloud_')},
             'saved_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         }
         with open(DATA_FILE, 'w', encoding='utf-8') as f:
             json.dump(data_to_save, f, ensure_ascii=False, indent=2)
         st.session_state.last_save_time = datetime.now()
         
-        # Auto-save to Supabase if configured
-        if st.session_state.settings.get('supabase_url') and st.session_state.settings.get('supabase_key'):
-            save_to_supabase()
+        # Auto-save to cloud
+        save_to_cloud()
         
         return True, f"Données sauvegardées ({len(st.session_state.players)} joueurs, {len(st.session_state.data)} jours)"
     except Exception as e:
@@ -510,7 +509,7 @@ def export_data_to_json():
         'players': st.session_state.players,
         'data': st.session_state.data,
         'injuries': st.session_state.injuries,
-        'settings': {k: v for k, v in st.session_state.settings.items() if not k.startswith('supabase_')},
+        'settings': {k: v for k, v in st.session_state.settings.items() if not k.startswith('cloud_')},
         'exported_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     }
     return json.dumps(data_to_export, ensure_ascii=False, indent=2)
@@ -524,7 +523,7 @@ def import_data_from_json(json_content):
         st.session_state.injuries = loaded.get('injuries', [])
         if 'settings' in loaded:
             for k, v in loaded['settings'].items():
-                if not k.startswith('supabase_'):
+                if not k.startswith('cloud_'):
                     st.session_state.settings[k] = v
         # Sauvegarder immédiatement après import
         save_data_to_file()
@@ -532,143 +531,132 @@ def import_data_from_json(json_content):
     except Exception as e:
         return False, f"Erreur: {str(e)}"
 
-# ==================== SUPABASE CLOUD STORAGE ====================
-def save_to_supabase():
-    """Sauvegarde automatique dans Supabase"""
+# ==================== CLOUD STORAGE AUTOMATIQUE ====================
+# Utilise JSONBlob - gratuit, pas d'inscription, jamais de pause !
+CLOUD_ID_FILE = "cloud_id.txt"
+
+def get_cloud_id():
+    """Récupère l'ID cloud depuis le fichier ou la session"""
+    if 'cloud_blob_id' in st.session_state.settings and st.session_state.settings['cloud_blob_id']:
+        return st.session_state.settings['cloud_blob_id']
+    
+    if os.path.exists(CLOUD_ID_FILE):
+        try:
+            with open(CLOUD_ID_FILE, 'r') as f:
+                blob_id = f.read().strip()
+                if blob_id:
+                    st.session_state.settings['cloud_blob_id'] = blob_id
+                    return blob_id
+        except:
+            pass
+    return None
+
+def save_cloud_id(blob_id):
+    """Sauvegarde l'ID cloud"""
+    st.session_state.settings['cloud_blob_id'] = blob_id
     try:
-        supabase_url = st.session_state.settings.get('supabase_url', '')
-        supabase_key = st.session_state.settings.get('supabase_key', '')
-        
-        if not supabase_url or not supabase_key:
-            return False, "Supabase non configuré"
-        
-        # Préparer les données
+        with open(CLOUD_ID_FILE, 'w') as f:
+            f.write(blob_id)
+    except:
+        pass
+
+def save_to_cloud():
+    """Sauvegarde automatique dans le cloud"""
+    try:
         data_to_save = {
             'players': st.session_state.players,
             'data': st.session_state.data,
             'injuries': st.session_state.injuries,
-            'settings': {k: v for k, v in st.session_state.settings.items() if not k.startswith('supabase_')},
-            'saved_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+            'settings': {k: v for k, v in st.session_state.settings.items() if not k.startswith('cloud_')},
+            'saved_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'app_version': 'v15'
         }
         
-        json_str = json.dumps(data_to_save, ensure_ascii=False)
+        json_data = json.dumps(data_to_save, ensure_ascii=False)
+        headers = {'Content-Type': 'application/json', 'Accept': 'application/json'}
         
-        # ID unique pour cette instance (basé sur l'URL ou un ID fixe)
-        record_id = st.session_state.settings.get('supabase_record_id', 'wellness_main')
+        blob_id = get_cloud_id()
         
-        # Upsert dans Supabase (insert ou update)
-        headers = {
-            'apikey': supabase_key,
-            'Authorization': f'Bearer {supabase_key}',
-            'Content-Type': 'application/json',
-            'Prefer': 'return=minimal'
-        }
-        
-        # Essayer d'abord un UPDATE
-        update_url = f"{supabase_url}/rest/v1/wellness_data?id=eq.{record_id}"
-        payload = {'id': record_id, 'data': json_str, 'updated_at': datetime.now().isoformat()}
-        
-        response = requests.patch(update_url, json=payload, headers=headers, timeout=30)
-        
-        if response.status_code == 200:
-            st.session_state.last_cloud_save = datetime.now()
-            return True, "Données synchronisées avec le cloud"
-        elif response.status_code == 404 or response.status_code == 406:
-            # L'enregistrement n'existe pas, faire un INSERT
-            insert_url = f"{supabase_url}/rest/v1/wellness_data"
-            response = requests.post(insert_url, json=payload, headers=headers, timeout=30)
-            if response.status_code in [200, 201]:
-                st.session_state.last_cloud_save = datetime.now()
-                return True, "Données sauvegardées dans le cloud"
-            else:
-                return False, f"Erreur insertion: {response.status_code} - {response.text[:100]}"
-        else:
-            return False, f"Erreur: {response.status_code} - {response.text[:100]}"
-        
-    except requests.exceptions.Timeout:
-        return False, "Timeout - le serveur ne répond pas"
-    except Exception as e:
-        return False, f"Erreur: {str(e)}"
-
-def load_from_supabase():
-    """Charge les données depuis Supabase"""
-    try:
-        supabase_url = st.session_state.settings.get('supabase_url', '')
-        supabase_key = st.session_state.settings.get('supabase_key', '')
-        
-        if not supabase_url or not supabase_key:
-            return False, "Supabase non configuré"
-        
-        record_id = st.session_state.settings.get('supabase_record_id', 'wellness_main')
-        
-        headers = {
-            'apikey': supabase_key,
-            'Authorization': f'Bearer {supabase_key}',
-        }
-        
-        url = f"{supabase_url}/rest/v1/wellness_data?id=eq.{record_id}&select=data,updated_at"
-        response = requests.get(url, headers=headers, timeout=30)
-        
-        if response.status_code != 200:
-            return False, f"Erreur serveur: {response.status_code}"
-        
-        results = response.json()
-        if not results:
-            return False, "Aucune sauvegarde trouvée dans le cloud"
-        
-        json_str = results[0]['data']
-        loaded = json.loads(json_str)
-        
-        st.session_state.players = loaded.get('players', [])
-        st.session_state.data = loaded.get('data', {})
-        st.session_state.injuries = loaded.get('injuries', [])
-        if 'settings' in loaded:
-            for k, v in loaded['settings'].items():
-                if not k.startswith('supabase_'):
-                    st.session_state.settings[k] = v
-        
-        # Sauvegarder localement aussi
-        save_data_to_file()
-        
-        saved_at = loaded.get('saved_at', results[0].get('updated_at', 'inconnue'))
-        return True, f"Données cloud chargées ({len(st.session_state.players)} joueurs, {len(st.session_state.data)} jours)"
-        
-    except json.JSONDecodeError:
-        return False, "Format de données invalide"
-    except requests.exceptions.Timeout:
-        return False, "Timeout - le serveur ne répond pas"
-    except Exception as e:
-        return False, f"Erreur: {str(e)}"
-
-def test_supabase_connection():
-    """Teste la connexion à Supabase"""
-    try:
-        supabase_url = st.session_state.settings.get('supabase_url', '')
-        supabase_key = st.session_state.settings.get('supabase_key', '')
-        
-        if not supabase_url or not supabase_key:
-            return False, "URL ou clé manquante"
-        
-        headers = {
-            'apikey': supabase_key,
-            'Authorization': f'Bearer {supabase_key}',
-        }
-        
-        # Tester l'accès à la table
-        url = f"{supabase_url}/rest/v1/wellness_data?limit=1"
-        response = requests.get(url, headers=headers, timeout=10)
-        
-        if response.status_code == 200:
-            return True, "✅ Connexion réussie !"
-        elif response.status_code == 404:
-            return False, "❌ Table 'wellness_data' non trouvée. Créez-la dans Supabase."
-        elif response.status_code == 401:
-            return False, "❌ Clé API invalide"
-        else:
-            return False, f"❌ Erreur: {response.status_code}"
+        if blob_id:
+            # Mettre à jour le blob existant
+            url = f"https://jsonblob.com/api/jsonBlob/{blob_id}"
+            response = requests.put(url, data=json_data.encode('utf-8'), headers=headers, timeout=30)
             
+            if response.status_code == 200:
+                st.session_state.last_cloud_save = datetime.now()
+                return True, "☁️ Synchronisé"
+            elif response.status_code == 404:
+                # Blob supprimé, en créer un nouveau
+                st.session_state.settings['cloud_blob_id'] = None
+                return save_to_cloud()
+            else:
+                return False, f"Erreur: {response.status_code}"
+        else:
+            # Créer un nouveau blob
+            url = "https://jsonblob.com/api/jsonBlob"
+            response = requests.post(url, data=json_data.encode('utf-8'), headers=headers, timeout=30)
+            
+            if response.status_code == 201:
+                location = response.headers.get('Location', '')
+                if location:
+                    new_blob_id = location.split('/')[-1]
+                    save_cloud_id(new_blob_id)
+                    st.session_state.last_cloud_save = datetime.now()
+                    return True, "☁️ Cloud créé"
+            return False, f"Erreur création: {response.status_code}"
+        
+    except requests.exceptions.Timeout:
+        return False, "Timeout"
     except Exception as e:
-        return False, f"❌ Erreur: {str(e)}"
+        return False, f"Erreur: {str(e)}"
+
+def load_from_cloud():
+    """Charge les données depuis le cloud"""
+    try:
+        blob_id = get_cloud_id()
+        if not blob_id:
+            return False, "Pas de sauvegarde cloud"
+        
+        url = f"https://jsonblob.com/api/jsonBlob/{blob_id}"
+        response = requests.get(url, headers={'Accept': 'application/json'}, timeout=30)
+        
+        if response.status_code == 200:
+            loaded = response.json()
+            
+            st.session_state.players = loaded.get('players', [])
+            st.session_state.data = loaded.get('data', {})
+            st.session_state.injuries = loaded.get('injuries', [])
+            if 'settings' in loaded:
+                for k, v in loaded['settings'].items():
+                    if not k.startswith('cloud_'):
+                        st.session_state.settings[k] = v
+            
+            # Sauvegarder localement
+            try:
+                with open(DATA_FILE, 'w', encoding='utf-8') as f:
+                    json.dump({
+                        'players': st.session_state.players,
+                        'data': st.session_state.data,
+                        'injuries': st.session_state.injuries,
+                        'settings': st.session_state.settings,
+                        'saved_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
+                    }, f, ensure_ascii=False, indent=2)
+            except:
+                pass
+            
+            return True, f"☁️ Chargé ({len(st.session_state.players)} joueurs, {len(st.session_state.data)} jours)"
+        elif response.status_code == 404:
+            return False, "Sauvegarde cloud introuvable"
+        else:
+            return False, f"Erreur: {response.status_code}"
+        
+    except Exception as e:
+        return False, f"Erreur: {str(e)}"
+
+def get_cloud_status():
+    """Retourne le statut du cloud"""
+    blob_id = get_cloud_id()
+    return (True, blob_id[:12] + "...") if blob_id else (False, None)
 
 def get_backup_reminder():
     """Vérifie si un rappel de backup est nécessaire"""
@@ -677,25 +665,58 @@ def get_backup_reminder():
     time_since_save = datetime.now() - st.session_state.last_save_time
     return time_since_save.total_seconds() > 1800
 
-# Charger automatiquement les données au démarrage
+# ==================== CHARGEMENT AUTOMATIQUE AU DÉMARRAGE ====================
 if 'data_loaded' not in st.session_state:
     st.session_state.data_loaded = True
     st.session_state.last_save_time = datetime.now()
     
-    # Essayer de charger depuis le fichier local d'abord
-    loaded_local = False
-    if os.path.exists(DATA_FILE):
-        success, msg = load_data_from_file()
-        if success:
-            loaded_local = True
-            print(f"✅ {msg}")
+    # Charger l'ID cloud si existe
+    if os.path.exists(CLOUD_ID_FILE):
+        try:
+            with open(CLOUD_ID_FILE, 'r') as f:
+                blob_id = f.read().strip()
+                if blob_id:
+                    st.session_state.settings['cloud_blob_id'] = blob_id
+        except:
+            pass
     
-    # Si pas de données locales et Supabase est configuré, charger depuis le cloud
-    if not loaded_local:
-        if st.session_state.settings.get('supabase_url') and st.session_state.settings.get('supabase_key'):
-            success, msg = load_from_supabase()
-            if success:
-                print(f"☁️ {msg}")
+    # Charger depuis le fichier local
+    local_data_count = 0
+    if os.path.exists(DATA_FILE):
+        try:
+            with open(DATA_FILE, 'r', encoding='utf-8') as f:
+                local_data = json.load(f)
+            local_data_count = len(local_data.get('data', {}))
+            st.session_state.players = local_data.get('players', [])
+            st.session_state.data = local_data.get('data', {})
+            st.session_state.injuries = local_data.get('injuries', [])
+            if 'settings' in local_data:
+                st.session_state.settings.update(local_data['settings'])
+        except:
+            pass
+    
+    # Charger depuis le cloud et comparer
+    cloud_blob_id = get_cloud_id()
+    if cloud_blob_id:
+        try:
+            url = f"https://jsonblob.com/api/jsonBlob/{cloud_blob_id}"
+            response = requests.get(url, headers={'Accept': 'application/json'}, timeout=15)
+            if response.status_code == 200:
+                cloud_data = response.json()
+                cloud_data_count = len(cloud_data.get('data', {}))
+                
+                # Si le cloud a plus de données, utiliser le cloud
+                if cloud_data_count > local_data_count:
+                    st.session_state.players = cloud_data.get('players', [])
+                    st.session_state.data = cloud_data.get('data', {})
+                    st.session_state.injuries = cloud_data.get('injuries', [])
+                    if 'settings' in cloud_data:
+                        for k, v in cloud_data['settings'].items():
+                            if not k.startswith('cloud_'):
+                                st.session_state.settings[k] = v
+                    st.session_state.cloud_loaded = True
+        except:
+            pass
 
 # ==================== UTILITAIRES ====================
 def get_player_group(position):
@@ -2920,144 +2941,72 @@ def page_import():
     
     st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
     
-    # === SAUVEGARDE / CHARGEMENT ===
-    is_cloud_configured = bool(st.session_state.settings.get('supabase_url') and st.session_state.settings.get('supabase_key'))
+    # === STOCKAGE CLOUD AUTOMATIQUE ===
+    cloud_connected, cloud_id = get_cloud_status()
     
-    if is_cloud_configured:
-        # Cloud configuré - message positif
-        st.markdown("""
-        <div class="premium-card" style="border:2px solid rgba(16,185,129,0.3);background:linear-gradient(135deg,rgba(16,185,129,0.05),rgba(0,0,0,0));">
-            <h3 style="color:white;margin-bottom:8px;">☁️ Stockage Cloud Actif</h3>
-            <div style="background:rgba(16,185,129,0.1);border-radius:8px;padding:12px;margin-bottom:16px;">
-                <p style="color:#10b981;font-size:13px;margin:0;font-weight:600;">
-                    ✅ Vos données sont sauvegardées automatiquement dans le cloud !
-                </p>
-                <p style="color:#94a3b8;font-size:12px;margin:8px 0 0 0;">
-                    Elles seront restaurées automatiquement au prochain démarrage de l'application.
-                </p>
-            </div>
-        """, unsafe_allow_html=True)
-        
-        col_sync1, col_sync2 = st.columns(2)
-        with col_sync1:
-            if st.button("☁️ Synchroniser maintenant", type="primary", use_container_width=True):
-                with st.spinner("Synchronisation..."):
-                    success, msg = save_to_supabase()
-                    if success:
-                        st.success(f"✅ {msg}")
-                    else:
-                        st.error(f"❌ {msg}")
-        
-        with col_sync2:
-            if st.button("📥 Charger depuis le cloud", use_container_width=True):
-                with st.spinner("Chargement..."):
-                    success, msg = load_from_supabase()
-                    if success:
-                        st.success(f"✅ {msg}")
-                        st.rerun()
-                    else:
-                        st.error(f"❌ {msg}")
-        
-        # Info dernière synchro
-        if 'last_cloud_save' in st.session_state:
-            st.caption(f"☁️ Dernière synchro : {st.session_state.last_cloud_save.strftime('%d/%m/%Y %H:%M')}")
-        
-        st.markdown("</div>", unsafe_allow_html=True)
-        
-        # Backup JSON optionnel
-        with st.expander("📦 Backup JSON manuel (optionnel)"):
-            col_restore, col_save = st.columns(2)
-            with col_restore:
-                uploaded_json = st.file_uploader("Restaurer depuis JSON", type=['json'], key="json_upload")
-                if uploaded_json:
-                    if st.button("✅ Restaurer", use_container_width=True):
-                        content = uploaded_json.read().decode('utf-8')
-                        success, msg = import_data_from_json(content)
-                        if success:
-                            st.success(f"✅ {msg}")
-                            st.rerun()
-                        else:
-                            st.error(f"❌ {msg}")
-            with col_save:
-                if st.session_state.data or st.session_state.players:
-                    json_data = export_data_to_json()
-                    st.download_button(
-                        "📥 Télécharger backup JSON",
-                        json_data,
-                        f"wellness_backup_{datetime.now().strftime('%Y%m%d_%H%M')}.json",
-                        "application/json",
-                        use_container_width=True
-                    )
-    else:
-        # Cloud non configuré - avertissement
-        st.markdown("""
-        <div class="premium-card" style="border:2px solid rgba(245,158,11,0.3);background:linear-gradient(135deg,rgba(245,158,11,0.05),rgba(0,0,0,0));">
-            <h3 style="color:white;margin-bottom:8px;">💾 Sauvegarde & Restauration</h3>
-            <div style="background:rgba(245,158,11,0.1);border-radius:8px;padding:12px;margin-bottom:16px;">
-                <p style="color:#fbbf24;font-size:13px;margin:0;font-weight:600;">
-                    ⚠️ Cloud non configuré - Vos données peuvent être perdues !
-                </p>
-                <p style="color:#94a3b8;font-size:12px;margin:8px 0 0 0;">
-                    Allez dans <strong style="color:white;">⚙️ Paramètres</strong> pour configurer Supabase (gratuit, 5 min)
-                    et ne plus jamais perdre vos données.
-                </p>
-            </div>
-        """, unsafe_allow_html=True)
-        
-        # Restore en premier - plus important
+    st.markdown(f"""
+    <div class="premium-card" style="border:2px solid rgba(16,185,129,0.3);background:linear-gradient(135deg,rgba(16,185,129,0.05),rgba(0,0,0,0));">
+        <h3 style="color:white;margin-bottom:8px;">☁️ Synchronisation Cloud</h3>
+        <div style="background:rgba(16,185,129,0.1);border-radius:8px;padding:12px;margin-bottom:16px;">
+            <p style="color:#10b981;font-size:13px;margin:0;font-weight:600;">
+                {"✅ Cloud actif - Données synchronisées automatiquement !" if cloud_connected else "✅ Prêt - Cliquez sur Synchroniser pour activer le cloud"}
+            </p>
+            <p style="color:#94a3b8;font-size:12px;margin:8px 0 0 0;">
+                Les données sont partagées entre tous les utilisateurs de l'application.
+            </p>
+        </div>
+    """, unsafe_allow_html=True)
+    
+    col_sync1, col_sync2 = st.columns(2)
+    with col_sync1:
+        if st.button("☁️ Synchroniser", type="primary", use_container_width=True):
+            with st.spinner("Synchronisation..."):
+                success, msg = save_to_cloud()
+                if success:
+                    st.success(f"✅ {msg}")
+                else:
+                    st.error(f"❌ {msg}")
+    
+    with col_sync2:
+        if st.button("📥 Recharger depuis le cloud", use_container_width=True, disabled=not cloud_connected):
+            with st.spinner("Chargement..."):
+                success, msg = load_from_cloud()
+                if success:
+                    st.success(f"✅ {msg}")
+                    st.rerun()
+                else:
+                    st.error(f"❌ {msg}")
+    
+    # Info dernière synchro
+    if 'last_cloud_save' in st.session_state:
+        st.caption(f"⏱️ Dernière synchro : {st.session_state.last_cloud_save.strftime('%d/%m/%Y %H:%M')}")
+    
+    st.markdown("</div>", unsafe_allow_html=True)
+    
+    # Backup JSON optionnel (caché par défaut)
+    with st.expander("📦 Backup JSON manuel (optionnel)"):
         col_restore, col_save = st.columns(2)
-        
         with col_restore:
-            st.markdown("#### 🔄 Restaurer mes données")
-            st.markdown("<p style='color:#94a3b8;font-size:12px;'>Chargez votre dernier backup JSON</p>", unsafe_allow_html=True)
-            
-            uploaded_json = st.file_uploader("", type=['json'], key="json_upload", label_visibility="collapsed")
+            uploaded_json = st.file_uploader("Restaurer depuis JSON", type=['json'], key="json_upload")
             if uploaded_json:
-                st.info(f"📄 Fichier: {uploaded_json.name}")
-                if st.button("✅ Restaurer ce backup", type="primary", use_container_width=True):
+                if st.button("✅ Restaurer", use_container_width=True):
                     content = uploaded_json.read().decode('utf-8')
                     success, msg = import_data_from_json(content)
                     if success:
                         st.success(f"✅ {msg}")
-                        st.balloons()
                         st.rerun()
                     else:
                         st.error(f"❌ {msg}")
-            else:
-                st.caption("👆 Glissez votre fichier backup .json ici")
-        
         with col_save:
-            st.markdown("#### 📥 Sauvegarder mes données")
-            st.markdown("<p style='color:#94a3b8;font-size:12px;'>Téléchargez un backup sur votre ordinateur</p>", unsafe_allow_html=True)
-            
             if st.session_state.data or st.session_state.players:
                 json_data = export_data_to_json()
-                
-                # Stats du backup
-                st.markdown(f"""
-                <div style="background:rgba(16,185,129,0.1);border-radius:8px;padding:10px;margin-bottom:12px;">
-                    <div style="display:flex;justify-content:space-around;text-align:center;">
-                        <div><span style="color:#10b981;font-weight:bold;">{len(st.session_state.players)}</span><br><span style="font-size:10px;color:#64748b;">joueurs</span></div>
-                        <div><span style="color:#10b981;font-weight:bold;">{len(st.session_state.data)}</span><br><span style="font-size:10px;color:#64748b;">jours</span></div>
-                        <div><span style="color:#10b981;font-weight:bold;">{sum(len(e) for e in st.session_state.data.values())}</span><br><span style="font-size:10px;color:#64748b;">entrées</span></div>
-                    </div>
-                </div>
-                """, unsafe_allow_html=True)
-                
                 st.download_button(
-                    "📥 Télécharger le backup complet",
+                    "📥 Télécharger backup JSON",
                     json_data,
                     f"wellness_backup_{datetime.now().strftime('%Y%m%d_%H%M')}.json",
                     "application/json",
-                    use_container_width=True,
-                    type="primary"
+                    use_container_width=True
                 )
-                
-                st.caption("💡 Conseil: Configurez le cloud dans Paramètres !")
-            else:
-                st.info("Aucune donnée à sauvegarder. Importez d'abord des données.")
-        
-        st.markdown("</div>", unsafe_allow_html=True)
     
     # Info stats actuelles
     if st.session_state.players or st.session_state.data:
@@ -3579,140 +3528,86 @@ def page_parametres():
     
     st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
     
-    # === STOCKAGE CLOUD SUPABASE ===
+    # === STOCKAGE CLOUD AUTOMATIQUE ===
     st.markdown("### ☁️ Stockage Cloud Automatique")
     
-    # Vérifier si déjà configuré
-    is_configured = bool(st.session_state.settings.get('supabase_url') and st.session_state.settings.get('supabase_key'))
+    # Vérifier le statut
+    cloud_connected, cloud_id = get_cloud_status()
     
-    if is_configured:
-        st.markdown("""
+    if cloud_connected:
+        st.markdown(f"""
         <div style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:12px;padding:16px;margin-bottom:16px;">
             <div style="display:flex;align-items:center;gap:12px;">
-                <span style="font-size:24px;">☁️</span>
-                <div>
-                    <div style="color:#10b981;font-weight:600;">Cloud connecté !</div>
-                    <div style="color:#94a3b8;font-size:12px;">Vos données sont sauvegardées automatiquement</div>
+                <span style="font-size:28px;">☁️</span>
+                <div style="flex:1;">
+                    <div style="color:#10b981;font-weight:600;font-size:16px;">Cloud connecté et actif !</div>
+                    <div style="color:#94a3b8;font-size:12px;margin-top:4px;">
+                        Vos données sont sauvegardées automatiquement à chaque modification.
+                        <br>ID: <code style="background:rgba(255,255,255,0.1);padding:2px 6px;border-radius:4px;">{cloud_id}</code>
+                    </div>
                 </div>
+                <span style="font-size:20px;">✅</span>
             </div>
         </div>
         """, unsafe_allow_html=True)
+        
+        # Dernière synchro
+        if 'last_cloud_save' in st.session_state:
+            time_diff = datetime.now() - st.session_state.last_cloud_save
+            if time_diff.total_seconds() < 60:
+                sync_text = "à l'instant"
+            elif time_diff.total_seconds() < 3600:
+                sync_text = f"il y a {int(time_diff.total_seconds() / 60)} min"
+            else:
+                sync_text = st.session_state.last_cloud_save.strftime("%d/%m %H:%M")
+            st.caption(f"⏱️ Dernière synchronisation : {sync_text}")
     else:
         st.markdown("""
-        <div style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:12px;padding:16px;margin-bottom:16px;">
+        <div style="background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.3);border-radius:12px;padding:16px;margin-bottom:16px;">
             <div style="display:flex;align-items:center;gap:12px;">
-                <span style="font-size:24px;">⚠️</span>
+                <span style="font-size:28px;">☁️</span>
                 <div>
-                    <div style="color:#f59e0b;font-weight:600;">Cloud non configuré</div>
-                    <div style="color:#94a3b8;font-size:12px;">Configurez Supabase pour ne jamais perdre vos données</div>
+                    <div style="color:#3b82f6;font-weight:600;font-size:16px;">Cloud prêt à être activé</div>
+                    <div style="color:#94a3b8;font-size:12px;margin-top:4px;">
+                        Cliquez sur "Sauvegarder" pour activer la synchronisation automatique.
+                        <br>Aucune configuration requise !
+                    </div>
                 </div>
             </div>
         </div>
         """, unsafe_allow_html=True)
     
-    with st.expander("📋 Configuration Supabase (5 minutes, gratuit)", expanded=not is_configured):
-        st.markdown("""
-        ### 🚀 Étapes de configuration
-        
-        **1. Créer un compte Supabase** (gratuit)
-        - Allez sur [supabase.com](https://supabase.com)
-        - Cliquez "Start your project" → Connectez-vous avec GitHub ou email
-        
-        **2. Créer un nouveau projet**
-        - Cliquez "New Project"
-        - Nom : `wellness-tracker` (ou ce que vous voulez)
-        - Mot de passe : générez-en un (pas besoin de le retenir)
-        - Région : choisissez la plus proche (EU West)
-        - Cliquez "Create new project" et attendez ~2 minutes
-        
-        **3. Créer la table de données**
-        - Allez dans "SQL Editor" (icône dans le menu à gauche)
-        - Copiez-collez ce code et cliquez "Run" :
-        
-        ```sql
-        CREATE TABLE wellness_data (
-            id TEXT PRIMARY KEY,
-            data TEXT,
-            updated_at TIMESTAMP WITH TIME ZONE DEFAULT NOW()
-        );
-        
-        -- Permettre l'accès public (lecture/écriture)
-        ALTER TABLE wellness_data ENABLE ROW LEVEL SECURITY;
-        CREATE POLICY "Allow all" ON wellness_data FOR ALL USING (true) WITH CHECK (true);
-        ```
-        
-        **4. Récupérer vos clés**
-        - Allez dans "Project Settings" (icône ⚙️ en bas à gauche)
-        - Cliquez "API" 
-        - Copiez **Project URL** → collez ci-dessous
-        - Copiez **anon public** (dans Project API keys) → collez ci-dessous
-        """)
-    
-    # Champs de configuration
-    col_url, col_key = st.columns(2)
-    
-    with col_url:
-        supabase_url = st.text_input(
-            "🔗 Project URL",
-            value=st.session_state.settings.get('supabase_url', ''),
-            placeholder="https://xxxxx.supabase.co",
-            type="default"
-        )
-        if supabase_url != st.session_state.settings.get('supabase_url', ''):
-            st.session_state.settings['supabase_url'] = supabase_url
-    
-    with col_key:
-        supabase_key = st.text_input(
-            "🔑 Clé API (anon public)",
-            value=st.session_state.settings.get('supabase_key', ''),
-            placeholder="eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-            type="password"
-        )
-        if supabase_key != st.session_state.settings.get('supabase_key', ''):
-            st.session_state.settings['supabase_key'] = supabase_key
-    
-    # Boutons d'action
-    col_test, col_save, col_load = st.columns(3)
-    
-    with col_test:
-        if st.button("🔍 Tester la connexion", use_container_width=True, disabled=not (supabase_url and supabase_key)):
-            with st.spinner("Test en cours..."):
-                success, msg = test_supabase_connection()
-                if success:
-                    st.success(msg)
-                else:
-                    st.error(msg)
-    
-    with col_save:
-        if st.button("☁️ Sauvegarder maintenant", use_container_width=True, type="primary", disabled=not (supabase_url and supabase_key)):
-            with st.spinner("Sauvegarde en cours..."):
-                success, msg = save_to_supabase()
+    # Boutons
+    col1, col2 = st.columns(2)
+    with col1:
+        if st.button("☁️ Synchroniser maintenant", use_container_width=True, type="primary"):
+            with st.spinner("Synchronisation..."):
+                success, msg = save_to_cloud()
                 if success:
                     st.success(f"✅ {msg}")
                 else:
                     st.error(f"❌ {msg}")
     
-    with col_load:
-        if st.button("📥 Charger depuis le cloud", use_container_width=True, disabled=not (supabase_url and supabase_key)):
-            with st.spinner("Chargement en cours..."):
-                success, msg = load_from_supabase()
+    with col2:
+        if st.button("📥 Forcer chargement cloud", use_container_width=True, disabled=not cloud_connected):
+            with st.spinner("Chargement..."):
+                success, msg = load_from_cloud()
                 if success:
                     st.success(f"✅ {msg}")
-                    st.balloons()
                     st.rerun()
                 else:
                     st.error(f"❌ {msg}")
     
-    # Info sur dernière synchro
-    if 'last_cloud_save' in st.session_state:
-        time_diff = datetime.now() - st.session_state.last_cloud_save
-        if time_diff.total_seconds() < 60:
-            sync_text = "à l'instant"
-        elif time_diff.total_seconds() < 3600:
-            sync_text = f"il y a {int(time_diff.total_seconds() / 60)} min"
-        else:
-            sync_text = st.session_state.last_cloud_save.strftime("%d/%m %H:%M")
-        st.caption(f"☁️ Dernière synchronisation : {sync_text}")
+    st.markdown("""
+    <div style="background:rgba(255,255,255,0.03);border-radius:8px;padding:12px;margin-top:16px;">
+        <div style="color:#64748b;font-size:12px;">
+            <strong style="color:#94a3b8;">ℹ️ Comment ça marche ?</strong><br>
+            • Les données sont sauvegardées automatiquement dans le cloud<br>
+            • Au démarrage, l'app charge automatiquement les données les plus récentes<br>
+            • Gratuit, illimité, aucune configuration requise !
+        </div>
+    </div>
+    """, unsafe_allow_html=True)
     
     st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
     
@@ -3841,11 +3736,11 @@ def main():
         
         st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
         
-        # Indicateur de statut cloud
-        is_cloud_configured = bool(st.session_state.settings.get('supabase_url') and st.session_state.settings.get('supabase_key'))
+        # Indicateur de statut cloud (automatique)
+        cloud_connected, cloud_id = get_cloud_status()
         
-        if is_cloud_configured:
-            # Cloud configuré - afficher statut synchro
+        if cloud_connected:
+            # Cloud actif
             if 'last_cloud_save' in st.session_state:
                 time_diff = datetime.now() - st.session_state.last_cloud_save
                 if time_diff.total_seconds() < 60:
@@ -3857,77 +3752,40 @@ def main():
                 
                 st.markdown(f"""
                 <div style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:8px;padding:10px;text-align:center;">
-                    <div style="font-size:11px;color:#10b981;">☁️ Cloud synchronisé {sync_text}</div>
+                    <div style="font-size:11px;color:#10b981;">☁️ Synchronisé {sync_text}</div>
                 </div>
                 """, unsafe_allow_html=True)
             else:
                 st.markdown("""
                 <div style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:8px;padding:10px;text-align:center;">
-                    <div style="font-size:11px;color:#10b981;">☁️ Cloud connecté</div>
+                    <div style="font-size:11px;color:#10b981;">☁️ Cloud actif</div>
                 </div>
                 """, unsafe_allow_html=True)
             
-            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-            
-            # Bouton synchro cloud
-            if st.button("☁️ Synchroniser", use_container_width=True, help="Sauvegarder dans le cloud"):
-                success, msg = save_to_supabase()
-                if success:
-                    st.success("✅ Synchronisé !")
-                else:
-                    st.error(msg)
-        else:
-            # Cloud non configuré - afficher avertissement
-            if os.path.exists(DATA_FILE):
-                try:
-                    file_mtime = os.path.getmtime(DATA_FILE)
-                    save_time = datetime.fromtimestamp(file_mtime)
-                    time_diff = datetime.now() - save_time
-                    if time_diff.total_seconds() < 60:
-                        save_text = "à l'instant"
-                    elif time_diff.total_seconds() < 3600:
-                        save_text = f"il y a {int(time_diff.total_seconds() / 60)} min"
-                    else:
-                        save_text = save_time.strftime("%d/%m %H:%M")
-                    
-                    st.markdown(f"""
-                    <div style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:8px;padding:10px;text-align:center;">
-                        <div style="font-size:11px;color:#f59e0b;">💾 Local {save_text}</div>
-                        <div style="font-size:9px;color:#64748b;margin-top:2px;">⚠️ Non synchronisé</div>
-                    </div>
-                    """, unsafe_allow_html=True)
-                except:
-                    pass
-            
-            st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-            
-            # Bouton de sauvegarde manuelle
-            if st.button("💾 Sauvegarder", use_container_width=True, help="Sauvegarde locale"):
-                success, msg = save_data_to_file()
-                if success:
-                    st.success("✅ Sauvegardé !")
-                else:
-                    st.error(msg)
-            
-            # Télécharger backup
-            if st.session_state.data or st.session_state.players:
-                st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
-                json_backup = export_data_to_json()
-                st.download_button(
-                    "📥 Backup JSON",
-                    json_backup,
-                    f"wellness_backup_{datetime.now().strftime('%Y%m%d_%H%M')}.json",
-                    "application/json",
-                    use_container_width=True
-                )
-                
+            # Indicateur si chargé depuis le cloud
+            if st.session_state.get('cloud_loaded'):
                 st.markdown("""
-                <div style="background:rgba(239,68,68,0.1);border:1px solid rgba(239,68,68,0.3);border-radius:8px;padding:8px;margin-top:8px;">
-                    <div style="font-size:9px;color:#ef4444;text-align:center;">
-                        ⚠️ Configurez le cloud dans<br>Paramètres pour ne rien perdre
-                    </div>
+                <div style="font-size:10px;color:#64748b;text-align:center;margin-top:4px;">
+                    📥 Données chargées depuis le cloud
                 </div>
                 """, unsafe_allow_html=True)
+        else:
+            # Cloud pas encore activé
+            st.markdown("""
+            <div style="background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.3);border-radius:8px;padding:10px;text-align:center;">
+                <div style="font-size:11px;color:#3b82f6;">☁️ Prêt à synchroniser</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
+        
+        # Bouton synchro cloud
+        if st.button("☁️ Synchroniser", use_container_width=True, help="Sauvegarder dans le cloud"):
+            success, msg = save_to_cloud()
+            if success:
+                st.success("✅ Synchronisé !")
+            else:
+                st.error(msg)
     
     # Navigation
     pages = {
