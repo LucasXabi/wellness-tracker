@@ -533,13 +533,26 @@ def import_data_from_json(json_content):
 
 # ==================== CLOUD STORAGE AUTOMATIQUE ====================
 # Utilise JSONBlob - gratuit, pas d'inscription, jamais de pause !
+# L'ID est stocké dans Streamlit Secrets pour survivre aux redémarrages
 CLOUD_ID_FILE = "cloud_id.txt"
 
 def get_cloud_id():
-    """Récupère l'ID cloud depuis le fichier ou la session"""
+    """Récupère l'ID cloud (priorité: Secrets > Session > Fichier)"""
+    # 1. Priorité maximale : Streamlit Secrets (survit aux redémarrages)
+    try:
+        if hasattr(st, 'secrets') and 'CLOUD_BLOB_ID' in st.secrets:
+            blob_id = st.secrets['CLOUD_BLOB_ID']
+            if blob_id:
+                st.session_state.settings['cloud_blob_id'] = blob_id
+                return blob_id
+    except:
+        pass
+    
+    # 2. Session state
     if 'cloud_blob_id' in st.session_state.settings and st.session_state.settings['cloud_blob_id']:
         return st.session_state.settings['cloud_blob_id']
     
+    # 3. Fichier local (peut être perdu au redémarrage)
     if os.path.exists(CLOUD_ID_FILE):
         try:
             with open(CLOUD_ID_FILE, 'r') as f:
@@ -549,6 +562,7 @@ def get_cloud_id():
                     return blob_id
         except:
             pass
+    
     return None
 
 def save_cloud_id(blob_id):
@@ -560,6 +574,13 @@ def save_cloud_id(blob_id):
     except:
         pass
 
+def is_cloud_id_in_secrets():
+    """Vérifie si l'ID est configuré dans les Secrets Streamlit"""
+    try:
+        return hasattr(st, 'secrets') and 'CLOUD_BLOB_ID' in st.secrets and st.secrets['CLOUD_BLOB_ID']
+    except:
+        return False
+
 def save_to_cloud():
     """Sauvegarde automatique dans le cloud"""
     try:
@@ -569,7 +590,7 @@ def save_to_cloud():
             'injuries': st.session_state.injuries,
             'settings': {k: v for k, v in st.session_state.settings.items() if not k.startswith('cloud_')},
             'saved_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            'app_version': 'v15'
+            'app_version': 'v16'
         }
         
         json_data = json.dumps(data_to_save, ensure_ascii=False)
@@ -602,6 +623,7 @@ def save_to_cloud():
                     new_blob_id = location.split('/')[-1]
                     save_cloud_id(new_blob_id)
                     st.session_state.last_cloud_save = datetime.now()
+                    st.session_state.new_cloud_id_created = new_blob_id  # Flag pour afficher les instructions
                     return True, "☁️ Cloud créé"
             return False, f"Erreur création: {response.status_code}"
         
@@ -656,7 +678,7 @@ def load_from_cloud():
 def get_cloud_status():
     """Retourne le statut du cloud"""
     blob_id = get_cloud_id()
-    return (True, blob_id[:12] + "...") if blob_id else (False, None)
+    return (True, blob_id) if blob_id else (False, None)
 
 def get_backup_reminder():
     """Vérifie si un rappel de backup est nécessaire"""
@@ -670,8 +692,15 @@ if 'data_loaded' not in st.session_state:
     st.session_state.data_loaded = True
     st.session_state.last_save_time = datetime.now()
     
-    # Charger l'ID cloud si existe
-    if os.path.exists(CLOUD_ID_FILE):
+    # 1. Charger l'ID cloud depuis les Secrets Streamlit (priorité)
+    try:
+        if hasattr(st, 'secrets') and 'CLOUD_BLOB_ID' in st.secrets:
+            st.session_state.settings['cloud_blob_id'] = st.secrets['CLOUD_BLOB_ID']
+    except:
+        pass
+    
+    # 2. Ou depuis le fichier local
+    if not st.session_state.settings.get('cloud_blob_id') and os.path.exists(CLOUD_ID_FILE):
         try:
             with open(CLOUD_ID_FILE, 'r') as f:
                 blob_id = f.read().strip()
@@ -680,7 +709,7 @@ if 'data_loaded' not in st.session_state:
         except:
             pass
     
-    # Charger depuis le fichier local
+    # 3. Charger les données locales pour comparaison
     local_data_count = 0
     if os.path.exists(DATA_FILE):
         try:
@@ -691,11 +720,13 @@ if 'data_loaded' not in st.session_state:
             st.session_state.data = local_data.get('data', {})
             st.session_state.injuries = local_data.get('injuries', [])
             if 'settings' in local_data:
-                st.session_state.settings.update(local_data['settings'])
+                for k, v in local_data['settings'].items():
+                    if not k.startswith('cloud_'):
+                        st.session_state.settings[k] = v
         except:
             pass
     
-    # Charger depuis le cloud et comparer
+    # 4. Si on a un ID cloud, charger depuis le cloud et comparer
     cloud_blob_id = get_cloud_id()
     if cloud_blob_id:
         try:
@@ -705,8 +736,8 @@ if 'data_loaded' not in st.session_state:
                 cloud_data = response.json()
                 cloud_data_count = len(cloud_data.get('data', {}))
                 
-                # Si le cloud a plus de données, utiliser le cloud
-                if cloud_data_count > local_data_count:
+                # Si le cloud a plus de données OU autant, utiliser le cloud (plus récent)
+                if cloud_data_count >= local_data_count:
                     st.session_state.players = cloud_data.get('players', [])
                     st.session_state.data = cloud_data.get('data', {})
                     st.session_state.injuries = cloud_data.get('injuries', [])
@@ -3533,35 +3564,69 @@ def page_parametres():
     
     # Vérifier le statut
     cloud_connected, cloud_id = get_cloud_status()
+    is_in_secrets = is_cloud_id_in_secrets()
     
-    if cloud_connected:
+    if cloud_connected and is_in_secrets:
+        # Configuration parfaite !
         st.markdown(f"""
         <div style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:12px;padding:16px;margin-bottom:16px;">
             <div style="display:flex;align-items:center;gap:12px;">
-                <span style="font-size:28px;">☁️</span>
+                <span style="font-size:28px;">✅</span>
                 <div style="flex:1;">
-                    <div style="color:#10b981;font-weight:600;font-size:16px;">Cloud connecté et actif !</div>
+                    <div style="color:#10b981;font-weight:600;font-size:16px;">Cloud configuré parfaitement !</div>
                     <div style="color:#94a3b8;font-size:12px;margin-top:4px;">
-                        Vos données sont sauvegardées automatiquement à chaque modification.
-                        <br>ID: <code style="background:rgba(255,255,255,0.1);padding:2px 6px;border-radius:4px;">{cloud_id}</code>
+                        Vos données survivront à tous les redémarrages, vacances, etc.
                     </div>
                 </div>
-                <span style="font-size:20px;">✅</span>
             </div>
         </div>
         """, unsafe_allow_html=True)
         
-        # Dernière synchro
-        if 'last_cloud_save' in st.session_state:
-            time_diff = datetime.now() - st.session_state.last_cloud_save
-            if time_diff.total_seconds() < 60:
-                sync_text = "à l'instant"
-            elif time_diff.total_seconds() < 3600:
-                sync_text = f"il y a {int(time_diff.total_seconds() / 60)} min"
-            else:
-                sync_text = st.session_state.last_cloud_save.strftime("%d/%m %H:%M")
-            st.caption(f"⏱️ Dernière synchronisation : {sync_text}")
+    elif cloud_connected and not is_in_secrets:
+        # Cloud actif mais pas dans les Secrets - IMPORTANT !
+        st.markdown(f"""
+        <div style="background:rgba(245,158,11,0.15);border:2px solid rgba(245,158,11,0.5);border-radius:12px;padding:16px;margin-bottom:16px;">
+            <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+                <span style="font-size:28px;">⚠️</span>
+                <div style="flex:1;">
+                    <div style="color:#f59e0b;font-weight:600;font-size:16px;">Action requise pour sécuriser vos données !</div>
+                    <div style="color:#94a3b8;font-size:12px;margin-top:4px;">
+                        Copiez l'ID ci-dessous dans les Secrets Streamlit pour que les données survivent aux redémarrages.
+                    </div>
+                </div>
+            </div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        # Afficher l'ID à copier
+        st.markdown("#### 📋 Votre ID Cloud (à copier) :")
+        st.code(cloud_id, language=None)
+        
+        with st.expander("🔧 Instructions de configuration (2 minutes)", expanded=True):
+            st.markdown(f"""
+            ### Étapes pour sécuriser vos données :
+            
+            **1.** Allez sur **[share.streamlit.io](https://share.streamlit.io)**
+            
+            **2.** Trouvez votre app **wellness-tracker-rugby** → cliquez sur **⋮** (3 points) → **Settings**
+            
+            **3.** Cliquez sur **Secrets** dans le menu à gauche
+            
+            **4.** Collez ce texte exactement :
+            ```toml
+            CLOUD_BLOB_ID = "{cloud_id}"
+            ```
+            
+            **5.** Cliquez **Save**
+            
+            **6.** L'app va redémarrer automatiquement → vos données seront sécurisées ! ✅
+            
+            ---
+            ⚠️ **Sans cette configuration**, si Streamlit redémarre (maintenance, vacances, etc.), 
+            l'app ne saura plus où trouver vos données !
+            """)
     else:
+        # Pas encore de cloud
         st.markdown("""
         <div style="background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.3);border-radius:12px;padding:16px;margin-bottom:16px;">
             <div style="display:flex;align-items:center;gap:12px;">
@@ -3569,13 +3634,23 @@ def page_parametres():
                 <div>
                     <div style="color:#3b82f6;font-weight:600;font-size:16px;">Cloud prêt à être activé</div>
                     <div style="color:#94a3b8;font-size:12px;margin-top:4px;">
-                        Cliquez sur "Sauvegarder" pour activer la synchronisation automatique.
-                        <br>Aucune configuration requise !
+                        Cliquez sur "Synchroniser" pour créer votre espace cloud.
                     </div>
                 </div>
             </div>
         </div>
         """, unsafe_allow_html=True)
+    
+    # Dernière synchro
+    if 'last_cloud_save' in st.session_state:
+        time_diff = datetime.now() - st.session_state.last_cloud_save
+        if time_diff.total_seconds() < 60:
+            sync_text = "à l'instant"
+        elif time_diff.total_seconds() < 3600:
+            sync_text = f"il y a {int(time_diff.total_seconds() / 60)} min"
+        else:
+            sync_text = st.session_state.last_cloud_save.strftime("%d/%m %H:%M")
+        st.caption(f"⏱️ Dernière synchronisation : {sync_text}")
     
     # Boutons
     col1, col2 = st.columns(2)
@@ -3585,6 +3660,9 @@ def page_parametres():
                 success, msg = save_to_cloud()
                 if success:
                     st.success(f"✅ {msg}")
+                    # Si nouveau cloud créé, forcer le rerun pour afficher les instructions
+                    if st.session_state.get('new_cloud_id_created'):
+                        st.rerun()
                 else:
                     st.error(f"❌ {msg}")
     
@@ -3602,9 +3680,10 @@ def page_parametres():
     <div style="background:rgba(255,255,255,0.03);border-radius:8px;padding:12px;margin-top:16px;">
         <div style="color:#64748b;font-size:12px;">
             <strong style="color:#94a3b8;">ℹ️ Comment ça marche ?</strong><br>
-            • Les données sont sauvegardées automatiquement dans le cloud<br>
-            • Au démarrage, l'app charge automatiquement les données les plus récentes<br>
-            • Gratuit, illimité, aucune configuration requise !
+            • Les données sont sauvegardées dans le cloud quand vous cliquez "Synchroniser"<br>
+            • Au démarrage, l'app charge automatiquement depuis le cloud<br>
+            • Gratuit, illimité, pas de pause !<br>
+            • <strong style="color:#f59e0b;">Important :</strong> Configurez les Secrets Streamlit pour que ça survive aux redémarrages
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -3738,9 +3817,10 @@ def main():
         
         # Indicateur de statut cloud (automatique)
         cloud_connected, cloud_id = get_cloud_status()
+        is_in_secrets = is_cloud_id_in_secrets()
         
-        if cloud_connected:
-            # Cloud actif
+        if cloud_connected and is_in_secrets:
+            # Parfait !
             if 'last_cloud_save' in st.session_state:
                 time_diff = datetime.now() - st.session_state.last_cloud_save
                 if time_diff.total_seconds() < 60:
@@ -3752,28 +3832,37 @@ def main():
                 
                 st.markdown(f"""
                 <div style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:8px;padding:10px;text-align:center;">
-                    <div style="font-size:11px;color:#10b981;">☁️ Synchronisé {sync_text}</div>
+                    <div style="font-size:11px;color:#10b981;">✅ Cloud sécurisé {sync_text}</div>
                 </div>
                 """, unsafe_allow_html=True)
             else:
                 st.markdown("""
                 <div style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:8px;padding:10px;text-align:center;">
-                    <div style="font-size:11px;color:#10b981;">☁️ Cloud actif</div>
+                    <div style="font-size:11px;color:#10b981;">✅ Cloud sécurisé</div>
                 </div>
                 """, unsafe_allow_html=True)
-            
-            # Indicateur si chargé depuis le cloud
-            if st.session_state.get('cloud_loaded'):
-                st.markdown("""
-                <div style="font-size:10px;color:#64748b;text-align:center;margin-top:4px;">
-                    📥 Données chargées depuis le cloud
-                </div>
-                """, unsafe_allow_html=True)
+                
+        elif cloud_connected and not is_in_secrets:
+            # Cloud actif mais pas sécurisé
+            st.markdown("""
+            <div style="background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.4);border-radius:8px;padding:10px;text-align:center;">
+                <div style="font-size:11px;color:#f59e0b;">⚠️ Config requise</div>
+                <div style="font-size:9px;color:#94a3b8;">Voir Paramètres</div>
+            </div>
+            """, unsafe_allow_html=True)
         else:
-            # Cloud pas encore activé
+            # Pas encore de cloud
             st.markdown("""
             <div style="background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.3);border-radius:8px;padding:10px;text-align:center;">
-                <div style="font-size:11px;color:#3b82f6;">☁️ Prêt à synchroniser</div>
+                <div style="font-size:11px;color:#3b82f6;">☁️ Cliquez Synchroniser</div>
+            </div>
+            """, unsafe_allow_html=True)
+        
+        # Indicateur si chargé depuis le cloud
+        if st.session_state.get('cloud_loaded'):
+            st.markdown("""
+            <div style="font-size:9px;color:#64748b;text-align:center;margin-top:4px;">
+                📥 Chargé depuis le cloud
             </div>
             """, unsafe_allow_html=True)
         
