@@ -2956,538 +2956,80 @@ def page_dashboard():
             st.info("Pas de données pour la comparaison")
 
 
+
 def page_import():
-    """Page d'import/export"""
-    st.markdown("# 📥 Import / Export")
+    """Page d'import - simplifiée"""
+    st.markdown("# 📥 Import")
     
-    # === GOOGLE SHEETS ===
+    # ============================================
+    # SECTION PRINCIPALE : Import quotidien
+    # ============================================
     st.markdown("""
     <div class="premium-card">
-        <h3 style="color:white;margin-bottom:20px;">📊 Importer depuis Google Sheets</h3>
+        <h3 style="color:white;margin-bottom:8px;">📊 Import quotidien</h3>
+        <p style="color:#94a3b8;font-size:13px;margin-bottom:16px;">Importez les données du jour depuis l'onglet "Bien-être"</p>
     """, unsafe_allow_html=True)
     
     url = st.text_input(
         "URL du Google Sheet",
         value="https://docs.google.com/spreadsheets/d/1Esm3NnED51jFpTs-oSjIdVybH51BSEcjhWOQhP1P3zI/edit?usp=sharing",
-        help="Collez l'URL complète de votre Google Sheet (doit être partagé en lecture publique)"
+        help="Collez l'URL complète de votre Google Sheet",
+        label_visibility="collapsed"
     )
     
-    # Choix du mode d'import
-    import_mode = st.radio(
-        "Mode d'import",
-        ["📅 Dernier jour (Bien-être)", "📆 Historique (Suivi BE)", "⚖️ Suivi Poids"],
-        horizontal=True,
-        help="Choisissez le type de données à importer"
-    )
-    
-    # Nom de l'onglet selon le mode
-    if import_mode == "📅 Dernier jour (Bien-être)":
-        sheet_name = st.text_input("Nom de l'onglet", value="Bien-être", key="sheet_bienetre")
-    elif import_mode == "📆 Historique (Suivi BE)":
-        sheet_name = st.text_input("Nom de l'onglet", value="Suivi BE", key="sheet_suivi")
-    else:  # Suivi Poids
-        sheet_name = st.text_input("Nom de l'onglet", value="Suivi Poids", key="sheet_poids")
-    
-    debug_mode = st.checkbox("🔧 Mode debug (affiche les détails du parsing)", value=False)
-    
-    # === MODE BIEN-ÊTRE (dernier jour) ===
-    if import_mode == "📅 Dernier jour (Bien-être)":
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            if st.button("👁️ Voir le contenu brut", use_container_width=True, key="view_bienetre"):
-                try:
-                    match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
-                    if match:
-                        doc_id = match.group(1)
-                        encoded_sheet = urllib.parse.quote(sheet_name)
-                        csv_url = f"https://docs.google.com/spreadsheets/d/{doc_id}/gviz/tq?tqx=out:csv&sheet={encoded_sheet}"
-                        
-                        df = pd.read_csv(csv_url, header=None)
-                        st.success(f"✅ {len(df)} lignes × {len(df.columns)} colonnes")
-                        
-                        st.markdown("**Premières lignes (avec index de colonnes):**")
-                        for i in range(min(10, len(df))):
-                            row_vals = []
-                            for j in range(min(12, len(df.columns))):
-                                val = df.iloc[i, j]
-                                if pd.notna(val):
-                                    row_vals.append(f"[{j}]`{val}`")
-                            st.write(f"**L{i}:** {' | '.join(row_vals)}")
-                        
-                        st.dataframe(df.head(15))
-                except Exception as e:
-                    st.error(f"Erreur: {e}")
-        
-        with col2:
-            if st.button("📥 Importer les données", type="primary", use_container_width=True, key="import_bienetre"):
-                try:
-                    match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
-                    if not match:
-                        st.error("❌ URL invalide")
-                    else:
-                        doc_id = match.group(1)
-                        encoded_sheet = urllib.parse.quote(sheet_name)
-                        csv_url = f"https://docs.google.com/spreadsheets/d/{doc_id}/gviz/tq?tqx=out:csv&sheet={encoded_sheet}"
-                        
-                        with st.spinner("📡 Téléchargement..."):
-                            df = pd.read_csv(csv_url, header=None)
-                        
-                        st.success(f"✅ {len(df)} lignes téléchargées")
-                        
-                        with st.spinner("🔄 Traitement..."):
-                            result = process_imported_data(df, debug=debug_mode)
-                        
-                        if result['success']:
-                            st.balloons()
-                            cols_found = result.get('columns_found', [])
-                            st.success(f"""
-                            ✅ **Import réussi !**
-                            - 📅 Date: **{format_date(result['date'], 'full')}**
-                            - 👥 {result['players']} joueurs ({result['new_players']} nouveaux)
-                            - 📊 {result['entries']} entrées
-                            - 🔍 Colonnes détectées: {', '.join(cols_found)}
-                            """)
-                        else:
-                            st.error(f"❌ Erreur: {result['error']}")
-                            
-                except Exception as e:
-                    st.error(f"❌ Erreur: {str(e)}")
-    
-    # === MODE SUIVI BE (historique) ===
-    elif import_mode == "📆 Historique (Suivi BE)":
-        st.markdown("""
-        <div style="background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.3);border-radius:8px;padding:12px;margin-bottom:16px;">
-            <div style="color:#60a5fa;font-weight:600;">📆 Import historique</div>
-            <div style="color:#94a3b8;font-size:13px;">Les données de l'onglet "Suivi BE" contiennent plusieurs jours côte à côte. Sélectionnez les dates à importer.</div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        col_scan1, col_scan2 = st.columns(2)
-        
-        with col_scan1:
-            # Bouton pour voir le contenu brut
-            if st.button("👁️ Voir le contenu brut", use_container_width=True, key="view_suivi"):
-                try:
-                    match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
-                    if match:
-                        doc_id = match.group(1)
-                        encoded_sheet = urllib.parse.quote(sheet_name)
-                        csv_url = f"https://docs.google.com/spreadsheets/d/{doc_id}/gviz/tq?tqx=out:csv&sheet={encoded_sheet}"
-                        
-                        df = pd.read_csv(csv_url, header=None)
-                        st.success(f"✅ {len(df)} lignes × {len(df.columns)} colonnes")
-                        
-                        st.markdown("**Premières lignes (avec index de colonnes):**")
-                        for i in range(min(8, len(df))):
-                            row_vals = []
-                            for j in range(min(20, len(df.columns))):
-                                val = df.iloc[i, j]
-                                if pd.notna(val):
-                                    val_str = str(val)[:15]
-                                    row_vals.append(f"[{j}]`{val_str}`")
-                            st.write(f"**L{i}:** {' | '.join(row_vals)}")
-                        
-                        st.dataframe(df.iloc[:10, :15])
-                except Exception as e:
-                    st.error(f"Erreur: {e}")
-        
-        with col_scan2:
-            # Étape 1: Scanner les dates disponibles
-            if st.button("🔍 Scanner les dates disponibles", use_container_width=True, key="scan_dates"):
-                try:
-                    match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
-                    if not match:
-                        st.error("❌ URL invalide")
-                    else:
-                        doc_id = match.group(1)
-                        encoded_sheet = urllib.parse.quote(sheet_name)
-                        csv_url = f"https://docs.google.com/spreadsheets/d/{doc_id}/gviz/tq?tqx=out:csv&sheet={encoded_sheet}"
-                        
-                        with st.spinner("📡 Téléchargement..."):
-                            df = pd.read_csv(csv_url, header=None)
-                        
-                        st.success(f"✅ {len(df)} lignes × {len(df.columns)} colonnes")
-                        
-                        with st.spinner("🔍 Analyse des dates..."):
-                            result = process_suivi_be_data(df, selected_dates=None, debug=debug_mode)
-                        
-                        if result['success'] and result.get('mode') == 'list_dates':
-                            st.session_state['suivi_be_dates'] = result['available_dates']
-                            st.session_state['suivi_be_df'] = df
-                            st.success(f"✅ {len(result['available_dates'])} dates trouvées !")
-                        else:
-                            st.error(f"❌ Erreur: {result.get('error', 'Erreur inconnue')}")
-                            
-                except Exception as e:
-                    st.error(f"❌ Erreur: {str(e)}")
-        
-        # Étape 2: Afficher les dates et permettre la sélection
-        if 'suivi_be_dates' in st.session_state and st.session_state['suivi_be_dates']:
-            available_dates = st.session_state['suivi_be_dates']
-            
-            st.markdown(f"### 📅 {len(available_dates)} dates disponibles")
-            
-            # Initialiser le compteur pour forcer le refresh du multiselect
-            if 'multiselect_key' not in st.session_state:
-                st.session_state['multiselect_key'] = 0
-            
-            # Options de sélection rapide
-            col_sel1, col_sel2, col_sel3 = st.columns(3)
-            with col_sel1:
-                if st.button("✅ Tout sélectionner", use_container_width=True):
-                    st.session_state['selected_suivi_dates'] = [d['date'] for d in available_dates]
-                    st.session_state['multiselect_key'] += 1  # Force refresh
-                    st.rerun()
-            with col_sel2:
-                if st.button("❌ Tout désélectionner", use_container_width=True):
-                    st.session_state['selected_suivi_dates'] = []
-                    st.session_state['multiselect_key'] += 1
-                    st.rerun()
-            with col_sel3:
-                if st.button("📅 7 derniers jours", use_container_width=True):
-                    st.session_state['selected_suivi_dates'] = [d['date'] for d in available_dates[-7:]]
-                    st.session_state['multiselect_key'] += 1
-                    st.rerun()
-            
-            # Multi-select des dates avec clé dynamique
-            date_options = {d['date']: d['label'] for d in available_dates}
-            default_selection = st.session_state.get('selected_suivi_dates', [])
-            
-            # Utiliser une clé dynamique pour forcer le refresh
-            selected = st.multiselect(
-                "Sélectionnez les dates à importer",
-                options=list(date_options.keys()),
-                default=[d for d in default_selection if d in date_options],
-                format_func=lambda x: date_options.get(x, x),
-                key=f"date_multiselect_{st.session_state['multiselect_key']}"
-            )
-            
-            # Mettre à jour la sélection
-            st.session_state['selected_suivi_dates'] = selected
-            
-            # Afficher le nombre sélectionné
-            st.info(f"📊 **{len(selected)} date(s) sélectionnée(s)**")
-            
-            # Bouton d'import (toujours visible)
-            if st.button(f"📥 Importer les dates sélectionnées", type="primary", use_container_width=True, key="import_suivi", disabled=(len(selected) == 0)):
-                if not selected:
-                    st.warning("⚠️ Sélectionnez au moins une date")
-                else:
-                    try:
-                        df = st.session_state.get('suivi_be_df')
-                        if df is None:
-                            st.error("❌ Données non chargées. Veuillez rescanner les dates.")
-                        else:
-                            with st.spinner(f"🔄 Import de {len(selected)} jours..."):
-                                result = process_suivi_be_data(df, selected_dates=selected, debug=debug_mode)
-                            
-                            if result['success'] and result.get('mode') == 'imported':
-                                st.balloons()
-                                st.success(f"""
-                                ✅ **Import réussi !**
-                                - 📅 Jours importés: **{len(result['dates_imported'])}**
-                                - 👥 {result['players']} joueurs ({result['new_players']} nouveaux)
-                                - 📊 {result['entries']} entrées au total
-                                """)
-                                
-                                # Auto-save après import
-                                save_success, save_msg = save_data_to_file()
-                                if save_success:
-                                    st.info(f"💾 {save_msg}")
-                                
-                                with st.expander("📋 Détail des dates importées"):
-                                    for d in result['dates_imported']:
-                                        st.write(f"• {d}")
-                                
-                                # Nettoyer le cache
-                                if 'suivi_be_dates' in st.session_state:
-                                    del st.session_state['suivi_be_dates']
-                                if 'suivi_be_df' in st.session_state:
-                                    del st.session_state['suivi_be_df']
-                                if 'selected_suivi_dates' in st.session_state:
-                                    del st.session_state['selected_suivi_dates']
-                            else:
-                                st.error(f"❌ Erreur: {result.get('error', 'Erreur inconnue')}")
-                                
-                    except Exception as e:
-                        st.error(f"❌ Erreur: {str(e)}")
-                        import traceback
-                        st.code(traceback.format_exc())
-            
-            if not selected:
-                st.warning("👆 Sélectionnez au moins une date pour importer")
-    
-    # === MODE SUIVI POIDS ===
-    elif import_mode == "⚖️ Suivi Poids":
-        st.markdown("""
-        <div style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:8px;padding:12px;margin-bottom:16px;">
-            <div style="color:#fbbf24;font-weight:600;">⚖️ Import du suivi de poids</div>
-            <div style="color:#94a3b8;font-size:13px;">Met à jour le poids des joueurs <b>existants</b> aux dates correspondantes. Les joueurs doivent déjà avoir des données wellness importées.</div>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        col_scan1, col_scan2 = st.columns(2)
-        
-        with col_scan1:
-            if st.button("👁️ Voir le contenu brut", use_container_width=True, key="view_poids"):
-                try:
-                    match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
-                    if match:
-                        doc_id = match.group(1)
-                        encoded_sheet = urllib.parse.quote(sheet_name)
-                        csv_url = f"https://docs.google.com/spreadsheets/d/{doc_id}/gviz/tq?tqx=out:csv&sheet={encoded_sheet}"
-                        
-                        df = pd.read_csv(csv_url, header=None)
-                        st.success(f"✅ {len(df)} lignes × {len(df.columns)} colonnes")
-                        
-                        st.markdown("**Premières lignes:**")
-                        st.dataframe(df.iloc[:15, :15])
-                except Exception as e:
-                    st.error(f"Erreur: {e}")
-        
-        with col_scan2:
-            if st.button("🔍 Scanner les dates disponibles", use_container_width=True, key="scan_poids"):
-                try:
-                    match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
-                    if not match:
-                        st.error("❌ URL invalide")
-                    else:
-                        doc_id = match.group(1)
-                        encoded_sheet = urllib.parse.quote(sheet_name)
-                        csv_url = f"https://docs.google.com/spreadsheets/d/{doc_id}/gviz/tq?tqx=out:csv&sheet={encoded_sheet}"
-                        
-                        with st.spinner("📡 Téléchargement..."):
-                            df = pd.read_csv(csv_url, header=None)
-                        
-                        st.success(f"✅ {len(df)} lignes × {len(df.columns)} colonnes")
-                        
-                        with st.spinner("🔍 Analyse des dates..."):
-                            result = process_suivi_poids_data(df, selected_dates=None, debug=debug_mode)
-                        
-                        if result['success'] and result.get('mode') == 'list_dates':
-                            st.session_state['suivi_poids_dates'] = result['available_dates']
-                            st.session_state['suivi_poids_df'] = df
-                            st.success(f"✅ {len(result['available_dates'])} dates trouvées !")
-                        else:
-                            st.error(f"❌ Erreur: {result.get('error', 'Erreur inconnue')}")
-                            
-                except Exception as e:
-                    st.error(f"❌ Erreur: {str(e)}")
-        
-        # Étape 2: Afficher les dates et permettre la sélection
-        if 'suivi_poids_dates' in st.session_state and st.session_state['suivi_poids_dates']:
-            available_dates = st.session_state['suivi_poids_dates']
-            
-            st.markdown(f"### 📅 {len(available_dates)} dates disponibles")
-            
-            # Vérifier les dates qui ont déjà des données wellness
-            dates_with_data = set(st.session_state.data.keys())
-            dates_with_match = [d for d in available_dates if d['date'] in dates_with_data]
-            dates_without_match = [d for d in available_dates if d['date'] not in dates_with_data]
-            
-            if dates_without_match:
-                st.warning(f"⚠️ {len(dates_without_match)} dates n'ont pas de données wellness correspondantes et seront ignorées")
-            
-            # Initialiser le compteur
-            if 'poids_multiselect_key' not in st.session_state:
-                st.session_state['poids_multiselect_key'] = 0
-            
-            # Options de sélection rapide
-            col_sel1, col_sel2, col_sel3 = st.columns(3)
-            with col_sel1:
-                if st.button("✅ Tout sélectionner", use_container_width=True, key="sel_all_poids"):
-                    st.session_state['selected_poids_dates'] = [d['date'] for d in dates_with_match]
-                    st.session_state['poids_multiselect_key'] += 1
-                    st.rerun()
-            with col_sel2:
-                if st.button("❌ Tout désélectionner", use_container_width=True, key="desel_all_poids"):
-                    st.session_state['selected_poids_dates'] = []
-                    st.session_state['poids_multiselect_key'] += 1
-                    st.rerun()
-            with col_sel3:
-                if st.button("📅 7 derniers jours", use_container_width=True, key="sel_7_poids"):
-                    st.session_state['selected_poids_dates'] = [d['date'] for d in dates_with_match[-7:]]
-                    st.session_state['poids_multiselect_key'] += 1
-                    st.rerun()
-            
-            # Multi-select des dates (seulement celles avec données wellness)
-            date_options = {d['date']: f"{d['label']} ✓" for d in dates_with_match}
-            default_selection = st.session_state.get('selected_poids_dates', [])
-            
-            selected = st.multiselect(
-                "Sélectionnez les dates à importer (✓ = données wellness existantes)",
-                options=list(date_options.keys()),
-                default=[d for d in default_selection if d in date_options],
-                format_func=lambda x: date_options.get(x, x),
-                key=f"poids_multiselect_{st.session_state['poids_multiselect_key']}"
-            )
-            
-            st.session_state['selected_poids_dates'] = selected
-            st.info(f"📊 **{len(selected)} date(s) sélectionnée(s)**")
-            
-            # Bouton d'import
-            if st.button(f"⚖️ Importer les poids", type="primary", use_container_width=True, key="import_poids", disabled=(len(selected) == 0)):
-                if not selected:
-                    st.warning("⚠️ Sélectionnez au moins une date")
-                else:
-                    try:
-                        df = st.session_state.get('suivi_poids_df')
-                        if df is None:
-                            st.error("❌ Données non chargées. Veuillez rescanner les dates.")
-                        else:
-                            with st.spinner(f"🔄 Import du poids pour {len(selected)} jours..."):
-                                result = process_suivi_poids_data(df, selected_dates=selected, debug=debug_mode)
-                            
-                            if result['success'] and result.get('mode') == 'imported':
-                                st.balloons()
-                                st.success(f"""
-                                ✅ **Import du poids réussi !**
-                                - 📅 Jours mis à jour: **{len(result['dates_imported'])}**
-                                - 👥 Joueurs avec poids: **{result['players_updated']}**
-                                - ⚖️ {result['entries']} valeurs de poids importées
-                                """)
-                                
-                                # Auto-save
-                                save_success, save_msg = save_data_to_file()
-                                if save_success:
-                                    st.info(f"💾 {save_msg}")
-                                
-                                # Nettoyer le cache
-                                if 'suivi_poids_dates' in st.session_state:
-                                    del st.session_state['suivi_poids_dates']
-                                if 'suivi_poids_df' in st.session_state:
-                                    del st.session_state['suivi_poids_df']
-                                if 'selected_poids_dates' in st.session_state:
-                                    del st.session_state['selected_poids_dates']
-                            else:
-                                st.error(f"❌ Erreur: {result.get('error', 'Erreur inconnue')}")
-                                
-                    except Exception as e:
-                        st.error(f"❌ Erreur: {str(e)}")
-                        import traceback
-                        st.code(traceback.format_exc())
-            
-            if not selected:
-                st.warning("👆 Sélectionnez au moins une date pour importer les poids")
-    
-    st.markdown("</div>", unsafe_allow_html=True)
-    
-    # Info box sur le format attendu
-    with st.expander("ℹ️ Formats attendus"):
-        st.markdown("""
-        ### 📅 Format "Bien-être" (dernier jour)
-        - **Ligne 1-2**: Date (ex: "mardi 6 janvier 2026")
-        - **Ligne 3**: En-têtes (Joueur, Poids, Sommeil, Charge mentale, Motivation, HDC, BDC, Remarque)
-        - **Ligne 4**: EQUIPE (ignorée)
-        - **Lignes 5+**: Données des joueurs
-        
-        ### 📆 Format "Suivi BE" (historique)
-        - Les jours sont **côte à côte horizontalement**
-        - Chaque bloc contient: Date → En-têtes → EQUIPE → Joueurs
-        - Pas de colonne Poids (seulement les métriques wellness)
-        
-        ### ⚖️ Format "Suivi Poids"
-        - **Ligne 1**: Vide puis dates (23/06, 24/06, etc.)
-        - **Colonne A**: Noms des joueurs (doivent correspondre aux joueurs existants)
-        - **Cellules**: Poids en kg
-        - ⚠️ Les joueurs doivent déjà avoir des données wellness pour les dates concernées
-        
-        **Colonnes reconnues :** Joueur, Sommeil, Charge mentale, Motivation, HDC, BDC, Remarque
-        """)
-    
-    st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
-    
-    # === EXCEL ===
-    st.markdown("""
-    <div class="premium-card">
-        <h3 style="color:white;margin-bottom:20px;">📄 Importer un fichier Excel/CSV</h3>
-    """, unsafe_allow_html=True)
-    
-    uploaded = st.file_uploader("Glissez votre fichier ici", type=['xlsx', 'xls', 'csv'], label_visibility="collapsed")
-    
-    if uploaded:
+    if st.button("📥 Importer les données du jour", type="primary", use_container_width=True, key="import_main"):
         try:
-            if uploaded.name.endswith('.csv'):
-                df = pd.read_csv(uploaded, header=None)
+            match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
+            if not match:
+                st.error("❌ URL invalide")
             else:
-                df = pd.read_excel(uploaded, header=None)
-            
-            st.info(f"📊 Fichier chargé: {len(df)} lignes × {len(df.columns)} colonnes")
-            
-            if st.button("📥 Traiter le fichier", use_container_width=True):
-                with st.spinner("Traitement..."):
-                    result = process_imported_data(df, debug=debug_mode)
+                doc_id = match.group(1)
+                encoded_sheet = urllib.parse.quote("Bien-être")
+                csv_url = f"https://docs.google.com/spreadsheets/d/{doc_id}/gviz/tq?tqx=out:csv&sheet={encoded_sheet}"
+                
+                with st.spinner("📡 Téléchargement..."):
+                    df = pd.read_csv(csv_url, header=None)
+                
+                with st.spinner("🔄 Traitement..."):
+                    result = process_imported_data(df, debug=False)
                 
                 if result['success']:
                     st.balloons()
-                    st.success(f"✅ Import réussi ! {result['entries']} joueurs pour le {format_date(result['date'], 'full')}")
-                    # Auto-save après import
-                    save_success, save_msg = save_data_to_file()
-                    if save_success:
-                        st.info(f"💾 {save_msg}")
+                    st.success(f"""
+                    ✅ **Import réussi !**
+                    - 📅 **{format_date(result['date'], 'full')}**
+                    - 👥 {result['players']} joueurs ({result['new_players']} nouveaux)
+                    - 📊 {result['entries']} entrées
+                    """)
                 else:
                     st.error(f"❌ {result['error']}")
+                    st.info("💡 Essayez les Options avancées avec le Mode debug pour voir les détails")
+                    
         except Exception as e:
-            st.error(f"❌ Erreur de lecture: {e}")
+            st.error(f"❌ Erreur: {str(e)}")
     
     st.markdown("</div>", unsafe_allow_html=True)
     
-    st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
     
-    # === EXPORT ===
-    if st.session_state.data:
-        st.markdown("""
-        <div class="premium-card">
-            <h3 style="color:white;margin-bottom:20px;">📤 Exporter les données</h3>
-        """, unsafe_allow_html=True)
-        
-        export_rows = []
-        for date, entries in st.session_state.data.items():
-            for e in entries:
-                export_rows.append({
-                    'Date': date,
-                    'Joueur': e.get('name'),
-                    'Poids': e.get('weight'),
-                    **{m['label']: e.get(m['key']) for m in METRICS},
-                    'Remarque': e.get('remark', '')
-                })
-        
-        if export_rows:
-            export_df = pd.DataFrame(export_rows)
-            csv = export_df.to_csv(index=False).encode('utf-8')
-            
-            col1, col2, col3 = st.columns([2, 1, 1])
-            with col1:
-                st.download_button("📥 Télécharger CSV", csv, "wellness_export.csv", "text/csv", use_container_width=True)
-            with col2:
-                st.metric("📊 Entrées", len(export_rows))
-            with col3:
-                st.metric("📅 Jours", len(st.session_state.data))
-        
-        st.markdown("</div>", unsafe_allow_html=True)
-    
-    st.markdown("<div style='height:24px'></div>", unsafe_allow_html=True)
-    
-    # === STOCKAGE CLOUD AUTOMATIQUE ===
+    # ============================================
+    # SECTION CLOUD : Synchronisation
+    # ============================================
     cloud_connected, cloud_id = get_cloud_status()
     
     st.markdown(f"""
-    <div class="premium-card" style="border:2px solid rgba(16,185,129,0.3);background:linear-gradient(135deg,rgba(16,185,129,0.05),rgba(0,0,0,0));">
-        <h3 style="color:white;margin-bottom:8px;">☁️ Synchronisation Cloud</h3>
-        <div style="background:rgba(16,185,129,0.1);border-radius:8px;padding:12px;margin-bottom:16px;">
-            <p style="color:#10b981;font-size:13px;margin:0;font-weight:600;">
-                {"✅ Cloud actif - Données synchronisées automatiquement !" if cloud_connected else "✅ Prêt - Cliquez sur Synchroniser pour activer le cloud"}
-            </p>
-            <p style="color:#94a3b8;font-size:12px;margin:8px 0 0 0;">
-                Les données sont partagées entre tous les utilisateurs de l'application.
-            </p>
+    <div class="premium-card" style="border:1px solid rgba(16,185,129,0.3);">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
+            <h3 style="color:white;margin:0;">☁️ Cloud</h3>
+            <span style="color:{'#10b981' if cloud_connected else '#64748b'};font-size:12px;">
+                {'✅ Connecté' if cloud_connected else '○ Non connecté'}
+            </span>
         </div>
     """, unsafe_allow_html=True)
     
     col_sync1, col_sync2 = st.columns(2)
     with col_sync1:
-        if st.button("☁️ Synchroniser", type="primary", use_container_width=True):
+        if st.button("☁️ Synchroniser", type="primary" if not cloud_connected else "secondary", use_container_width=True):
             with st.spinner("Synchronisation..."):
                 success, msg = save_to_cloud()
                 if success:
@@ -3496,7 +3038,7 @@ def page_import():
                     st.error(f"❌ {msg}")
     
     with col_sync2:
-        if st.button("📥 Recharger depuis le cloud", use_container_width=True, disabled=not cloud_connected):
+        if st.button("📥 Recharger", use_container_width=True, disabled=not cloud_connected):
             with st.spinner("Chargement..."):
                 success, msg = load_from_cloud()
                 if success:
@@ -3505,17 +3047,218 @@ def page_import():
                 else:
                     st.error(f"❌ {msg}")
     
-    # Info dernière synchro
     if 'last_cloud_save' in st.session_state:
         st.caption(f"⏱️ Dernière synchro : {st.session_state.last_cloud_save.strftime('%d/%m/%Y %H:%M')}")
     
     st.markdown("</div>", unsafe_allow_html=True)
     
-    # Backup JSON optionnel (caché par défaut)
-    with st.expander("📦 Backup JSON manuel (optionnel)"):
-        col_restore, col_save = st.columns(2)
-        with col_restore:
-            uploaded_json = st.file_uploader("Restaurer depuis JSON", type=['json'], key="json_upload")
+    st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+    
+    # ============================================
+    # OPTIONS AVANCÉES (cachées)
+    # ============================================
+    with st.expander("🔧 Options avancées"):
+        
+        # Mode debug global
+        debug_mode = st.checkbox("🔧 Mode debug (affiche les détails du parsing)", value=False)
+        
+        st.markdown("---")
+        
+        # Tabs pour les options avancées
+        adv_tabs = st.tabs(["📆 Historique BE", "⚖️ Suivi Poids", "📄 Fichier Excel"])
+        
+        # --- Tab Historique BE ---
+        with adv_tabs[0]:
+            st.markdown("""
+            <div style="color:#94a3b8;font-size:13px;margin-bottom:12px;">
+                Import de plusieurs jours depuis l'onglet "Suivi BE" (données côte à côte)
+            </div>
+            """, unsafe_allow_html=True)
+            
+            sheet_suivi = st.text_input("Nom de l'onglet", value="Suivi BE", key="sheet_suivi_adv")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("👁️ Voir contenu", use_container_width=True, key="view_suivi_adv"):
+                    try:
+                        match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
+                        if match:
+                            doc_id = match.group(1)
+                            encoded_sheet = urllib.parse.quote(sheet_suivi)
+                            csv_url = f"https://docs.google.com/spreadsheets/d/{doc_id}/gviz/tq?tqx=out:csv&sheet={encoded_sheet}"
+                            df = pd.read_csv(csv_url, header=None)
+                            st.success(f"✅ {len(df)} lignes × {len(df.columns)} colonnes")
+                            st.dataframe(df.iloc[:8, :12])
+                    except Exception as e:
+                        st.error(f"Erreur: {e}")
+            
+            with col2:
+                if st.button("🔍 Scanner dates", use_container_width=True, key="scan_suivi_adv"):
+                    try:
+                        match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
+                        if match:
+                            doc_id = match.group(1)
+                            encoded_sheet = urllib.parse.quote(sheet_suivi)
+                            csv_url = f"https://docs.google.com/spreadsheets/d/{doc_id}/gviz/tq?tqx=out:csv&sheet={encoded_sheet}"
+                            df = pd.read_csv(csv_url, header=None)
+                            result = process_suivi_be_data(df, selected_dates=None, debug=debug_mode)
+                            if result['success'] and result.get('mode') == 'list_dates':
+                                st.session_state['suivi_be_dates'] = result['available_dates']
+                                st.session_state['suivi_be_df'] = df
+                                st.success(f"✅ {len(result['available_dates'])} dates trouvées")
+                            else:
+                                st.error(f"❌ {result.get('error')}")
+                    except Exception as e:
+                        st.error(f"Erreur: {e}")
+            
+            # Sélection des dates
+            if 'suivi_be_dates' in st.session_state and st.session_state['suivi_be_dates']:
+                available = st.session_state['suivi_be_dates']
+                date_options = {d['date']: d['label'] for d in available}
+                
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    if st.button("✅ Tout", key="sel_all_be"):
+                        st.session_state['sel_be'] = list(date_options.keys())
+                        st.rerun()
+                with col_b:
+                    if st.button("📅 7 derniers", key="sel_7_be"):
+                        st.session_state['sel_be'] = [d['date'] for d in available[-7:]]
+                        st.rerun()
+                
+                selected = st.multiselect("Dates", list(date_options.keys()), 
+                    default=st.session_state.get('sel_be', []), 
+                    format_func=lambda x: date_options.get(x, x), key="ms_be")
+                
+                if st.button(f"📥 Importer {len(selected)} dates", type="primary", disabled=len(selected)==0, key="imp_be"):
+                    df = st.session_state.get('suivi_be_df')
+                    result = process_suivi_be_data(df, selected_dates=selected, debug=debug_mode)
+                    if result['success']:
+                        st.balloons()
+                        st.success(f"✅ {result['entries']} entrées importées !")
+                        del st.session_state['suivi_be_dates']
+                        del st.session_state['suivi_be_df']
+                    else:
+                        st.error(f"❌ {result.get('error')}")
+        
+        # --- Tab Suivi Poids ---
+        with adv_tabs[1]:
+            st.markdown("""
+            <div style="color:#94a3b8;font-size:13px;margin-bottom:12px;">
+                Met à jour le poids des joueurs existants depuis l'onglet "Suivi Poids"
+            </div>
+            """, unsafe_allow_html=True)
+            
+            sheet_poids = st.text_input("Nom de l'onglet", value="Suivi Poids", key="sheet_poids_adv")
+            
+            col1, col2 = st.columns(2)
+            with col1:
+                if st.button("👁️ Voir contenu", use_container_width=True, key="view_poids_adv"):
+                    try:
+                        match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
+                        if match:
+                            doc_id = match.group(1)
+                            encoded_sheet = urllib.parse.quote(sheet_poids)
+                            csv_url = f"https://docs.google.com/spreadsheets/d/{doc_id}/gviz/tq?tqx=out:csv&sheet={encoded_sheet}"
+                            df = pd.read_csv(csv_url, header=None)
+                            st.success(f"✅ {len(df)} lignes × {len(df.columns)} colonnes")
+                            st.dataframe(df.iloc[:10, :10])
+                    except Exception as e:
+                        st.error(f"Erreur: {e}")
+            
+            with col2:
+                if st.button("🔍 Scanner dates", use_container_width=True, key="scan_poids_adv"):
+                    try:
+                        match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
+                        if match:
+                            doc_id = match.group(1)
+                            encoded_sheet = urllib.parse.quote(sheet_poids)
+                            csv_url = f"https://docs.google.com/spreadsheets/d/{doc_id}/gviz/tq?tqx=out:csv&sheet={encoded_sheet}"
+                            df = pd.read_csv(csv_url, header=None)
+                            result = process_suivi_poids_data(df, selected_dates=None, debug=debug_mode)
+                            if result['success'] and result.get('mode') == 'list_dates':
+                                st.session_state['suivi_poids_dates'] = result['available_dates']
+                                st.session_state['suivi_poids_df'] = df
+                                st.success(f"✅ {len(result['available_dates'])} dates trouvées")
+                            else:
+                                st.error(f"❌ {result.get('error')}")
+                    except Exception as e:
+                        st.error(f"Erreur: {e}")
+            
+            # Sélection des dates poids
+            if 'suivi_poids_dates' in st.session_state and st.session_state['suivi_poids_dates']:
+                available = st.session_state['suivi_poids_dates']
+                existing_dates = set(st.session_state.data.keys())
+                matching = [d for d in available if d['date'] in existing_dates]
+                
+                if len(matching) < len(available):
+                    st.warning(f"⚠️ {len(available) - len(matching)} dates sans données wellness")
+                
+                date_options = {d['date']: d['label'] for d in matching}
+                
+                col_a, col_b = st.columns(2)
+                with col_a:
+                    if st.button("✅ Tout", key="sel_all_poids"):
+                        st.session_state['sel_poids'] = list(date_options.keys())
+                        st.rerun()
+                with col_b:
+                    if st.button("📅 7 derniers", key="sel_7_poids"):
+                        st.session_state['sel_poids'] = [d['date'] for d in matching[-7:]]
+                        st.rerun()
+                
+                selected = st.multiselect("Dates", list(date_options.keys()),
+                    default=st.session_state.get('sel_poids', []),
+                    format_func=lambda x: date_options.get(x, x), key="ms_poids")
+                
+                if st.button(f"⚖️ Importer poids ({len(selected)} dates)", type="primary", disabled=len(selected)==0, key="imp_poids"):
+                    df = st.session_state.get('suivi_poids_df')
+                    result = process_suivi_poids_data(df, selected_dates=selected, debug=debug_mode)
+                    if result['success']:
+                        st.balloons()
+                        st.success(f"✅ {result['entries']} poids mis à jour !")
+                        del st.session_state['suivi_poids_dates']
+                        del st.session_state['suivi_poids_df']
+                    else:
+                        st.error(f"❌ {result.get('error')}")
+        
+        # --- Tab Fichier Excel ---
+        with adv_tabs[2]:
+            st.markdown("""
+            <div style="color:#94a3b8;font-size:13px;margin-bottom:12px;">
+                Import depuis un fichier Excel ou CSV local
+            </div>
+            """, unsafe_allow_html=True)
+            
+            uploaded = st.file_uploader("Fichier", type=['xlsx', 'xls', 'csv'], label_visibility="collapsed")
+            
+            if uploaded:
+                try:
+                    if uploaded.name.endswith('.csv'):
+                        df = pd.read_csv(uploaded, header=None)
+                    else:
+                        df = pd.read_excel(uploaded, header=None)
+                    
+                    st.info(f"📊 {len(df)} lignes × {len(df.columns)} colonnes")
+                    
+                    if st.button("📥 Traiter", use_container_width=True, key="imp_excel"):
+                        result = process_imported_data(df, debug=debug_mode)
+                        if result['success']:
+                            st.balloons()
+                            st.success(f"✅ Import réussi ! {result['entries']} entrées")
+                        else:
+                            st.error(f"❌ {result['error']}")
+                except Exception as e:
+                    st.error(f"❌ {e}")
+    
+    # ============================================
+    # SAUVEGARDE (cachée)
+    # ============================================
+    with st.expander("📦 Sauvegarde & Export"):
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            st.markdown("**📥 Restaurer un backup**")
+            uploaded_json = st.file_uploader("Fichier JSON", type=['json'], key="json_restore", label_visibility="collapsed")
             if uploaded_json:
                 if st.button("✅ Restaurer", use_container_width=True):
                     content = uploaded_json.read().decode('utf-8')
@@ -3525,31 +3268,49 @@ def page_import():
                         st.rerun()
                     else:
                         st.error(f"❌ {msg}")
-        with col_save:
+        
+        with col2:
+            st.markdown("**📤 Télécharger backup**")
             if st.session_state.data or st.session_state.players:
                 json_data = export_data_to_json()
                 st.download_button(
-                    "📥 Télécharger backup JSON",
+                    "💾 Backup JSON",
                     json_data,
-                    f"wellness_backup_{datetime.now().strftime('%Y%m%d_%H%M')}.json",
+                    f"wellness_backup_{datetime.now().strftime('%Y%m%d')}.json",
                     "application/json",
                     use_container_width=True
                 )
+                
+                # Export CSV
+                export_rows = []
+                for date, entries in st.session_state.data.items():
+                    for e in entries:
+                        export_rows.append({
+                            'Date': date,
+                            'Joueur': e.get('name'),
+                            'Poids': e.get('weight'),
+                            **{m['label']: e.get(m['key']) for m in METRICS},
+                            'Remarque': e.get('remark', '')
+                        })
+                if export_rows:
+                    csv = pd.DataFrame(export_rows).to_csv(index=False).encode('utf-8')
+                    st.download_button("📊 Export CSV", csv, "wellness_export.csv", "text/csv", use_container_width=True)
     
-    # Info stats actuelles
+    # ============================================
+    # STATS EN BAS
+    # ============================================
     if st.session_state.players or st.session_state.data:
-        st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
-        col_stat1, col_stat2, col_stat3, col_stat4 = st.columns(4)
-        with col_stat1:
+        st.markdown("<div style='height:20px'></div>", unsafe_allow_html=True)
+        col1, col2, col3, col4 = st.columns(4)
+        with col1:
             st.metric("👥 Joueurs", len(st.session_state.players))
-        with col_stat2:
-            st.metric("📅 Jours de données", len(st.session_state.data))
-        with col_stat3:
-            total_entries = sum(len(e) for e in st.session_state.data.values())
-            st.metric("📊 Entrées totales", total_entries)
-        with col_stat4:
-            st.metric("🏥 Blessures actives", len([i for i in st.session_state.injuries if i.get('status') == 'Active']))
-
+        with col2:
+            st.metric("📅 Jours", len(st.session_state.data))
+        with col3:
+            total = sum(len(e) for e in st.session_state.data.values())
+            st.metric("📊 Entrées", total)
+        with col4:
+            st.metric("🏥 Blessures", len([i for i in st.session_state.injuries if i.get('status') == 'Active']))
 
 def page_effectif():
     """Page Effectif & Comparaisons"""
