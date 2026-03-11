@@ -1341,6 +1341,179 @@ def process_suivi_be_data(df, selected_dates=None, debug=False):
         return {'success': False, 'error': str(e)}
 
 
+def process_suivi_poids_data(df, selected_dates=None, debug=False):
+    """
+    Traite les données du format "Suivi Poids" - met à jour le poids des joueurs existants.
+    
+    Format attendu :
+    - Ligne 0 : vide, puis dates (23/06, 24/06, etc.)
+    - Colonne 0 : noms des joueurs
+    - Cellules : poids en kg
+    """
+    try:
+        import streamlit as st
+        
+        if debug:
+            st.write("### 🔍 Analyse du fichier Suivi Poids")
+            st.write(f"**Dimensions:** {len(df)} lignes × {len(df.columns)} colonnes")
+        
+        # 1. Extraire les dates depuis la première ligne
+        date_row = df.iloc[0]
+        dates_info = []
+        
+        for col_idx in range(1, len(date_row)):
+            cell = date_row.iloc[col_idx]
+            if pd.notna(cell):
+                cell_str = str(cell).strip()
+                # Essayer de parser la date (format DD/MM ou DD/MM/YY ou DD/MM/YYYY)
+                parsed_date = None
+                for fmt in ['%d/%m', '%d/%m/%y', '%d/%m/%Y', '%d-%m', '%d-%m-%y', '%d-%m-%Y']:
+                    try:
+                        parsed = datetime.strptime(cell_str, fmt)
+                        # Si pas d'année, utiliser l'année courante ou 2025/2026
+                        if fmt in ['%d/%m', '%d-%m']:
+                            # Déterminer l'année selon le mois
+                            if parsed.month >= 7:  # Juillet ou après → année de début
+                                parsed = parsed.replace(year=2025)
+                            else:  # Avant juillet → année de fin
+                                parsed = parsed.replace(year=2026)
+                        parsed_date = parsed.strftime('%Y-%m-%d')
+                        break
+                    except:
+                        continue
+                
+                if parsed_date:
+                    dates_info.append({
+                        'col_idx': col_idx,
+                        'date': parsed_date,
+                        'date_str': cell_str
+                    })
+        
+        if not dates_info:
+            return {'success': False, 'error': "Aucune date trouvée dans la première ligne."}
+        
+        if debug:
+            st.write(f"**Dates trouvées:** {len(dates_info)}")
+            st.write(f"Du {dates_info[0]['date_str']} au {dates_info[-1]['date_str']}")
+        
+        # Si aucune date sélectionnée, retourner la liste des dates disponibles
+        if selected_dates is None:
+            return {
+                'success': True,
+                'mode': 'list_dates',
+                'available_dates': [{'date': d['date'], 'label': d['date_str']} for d in dates_info]
+            }
+        
+        # 2. Créer un mapping des noms de joueurs existants
+        existing_players = {p['name'].upper().strip(): p['name'] for p in st.session_state.players}
+        
+        if debug:
+            st.write(f"**Joueurs existants:** {len(existing_players)}")
+        
+        # 3. Parcourir les lignes (joueurs) et colonnes (dates) pour mettre à jour le poids
+        updates_count = 0
+        players_updated = set()
+        dates_updated = set()
+        
+        for row_idx in range(1, len(df)):  # Commencer à la ligne 1 (après les dates)
+            row = df.iloc[row_idx]
+            player_name_raw = row.iloc[0]
+            
+            if pd.isna(player_name_raw):
+                continue
+            
+            player_name_raw = str(player_name_raw).strip()
+            if not player_name_raw:
+                continue
+            
+            # Chercher le joueur dans les existants
+            player_name_upper = player_name_raw.upper()
+            matched_name = None
+            
+            # Correspondance exacte
+            if player_name_upper in existing_players:
+                matched_name = existing_players[player_name_upper]
+            else:
+                # Essayer une correspondance partielle
+                for key, name in existing_players.items():
+                    if player_name_upper in key or key in player_name_upper:
+                        matched_name = name
+                        break
+            
+            if not matched_name:
+                if debug and row_idx <= 5:
+                    st.write(f"  ⚠️ Joueur non trouvé: {player_name_raw}")
+                continue
+            
+            # Parcourir les dates sélectionnées et mettre à jour le poids
+            for date_info in dates_info:
+                if date_info['date'] not in selected_dates:
+                    continue
+                
+                col_idx = date_info['col_idx']
+                date_key = date_info['date']
+                
+                if col_idx >= len(row):
+                    continue
+                
+                weight_val = row.iloc[col_idx]
+                
+                if pd.isna(weight_val):
+                    continue
+                
+                # Parser le poids
+                try:
+                    if isinstance(weight_val, (int, float)):
+                        weight = float(weight_val)
+                    else:
+                        weight_str = str(weight_val).replace(',', '.').strip()
+                        weight = float(weight_str)
+                    
+                    # Valider le poids (entre 50 et 200 kg pour un rugbyman)
+                    if weight < 50 or weight > 200:
+                        continue
+                except:
+                    continue
+                
+                # Mettre à jour le poids dans les données wellness de cette date
+                if date_key in st.session_state.data:
+                    for entry in st.session_state.data[date_key]:
+                        if entry.get('name') == matched_name:
+                            entry['weight'] = round(weight, 1)
+                            updates_count += 1
+                            players_updated.add(matched_name)
+                            dates_updated.add(date_key)
+                            break
+                    else:
+                        # Le joueur n'a pas d'entrée pour cette date, en créer une avec juste le poids
+                        # (optionnel - seulement si on veut créer des entrées)
+                        pass
+        
+        if updates_count > 0:
+            # AUTO-SAVE après import réussi
+            save_data_to_file()
+            
+            return {
+                'success': True,
+                'mode': 'imported',
+                'dates_imported': list(dates_updated),
+                'entries': updates_count,
+                'players_updated': len(players_updated),
+                'message': f"Poids mis à jour pour {len(players_updated)} joueurs sur {len(dates_updated)} dates"
+            }
+        else:
+            return {
+                'success': False, 
+                'error': "Aucun poids mis à jour. Vérifiez que les joueurs existent et que les dates correspondent."
+            }
+        
+    except Exception as e:
+        import traceback
+        if debug:
+            st.error(f"Erreur: {traceback.format_exc()}")
+        return {'success': False, 'error': str(e)}
+
+
 def process_imported_data(df, debug=False):
     """
     Traite les données importées depuis Google Sheets.
@@ -2635,20 +2808,20 @@ def page_import():
     )
     
     # Choix du mode d'import
-    col_mode1, col_mode2 = st.columns(2)
-    with col_mode1:
-        import_mode = st.radio(
-            "Mode d'import",
-            ["📅 Dernier jour (Bien-être)", "📆 Historique (Suivi BE)"],
-            horizontal=True,
-            help="Choisissez le type de données à importer"
-        )
+    import_mode = st.radio(
+        "Mode d'import",
+        ["📅 Dernier jour (Bien-être)", "📆 Historique (Suivi BE)", "⚖️ Suivi Poids"],
+        horizontal=True,
+        help="Choisissez le type de données à importer"
+    )
     
-    with col_mode2:
-        if import_mode == "📅 Dernier jour (Bien-être)":
-            sheet_name = st.text_input("Nom de l'onglet", value="Bien-être", key="sheet_bienetre")
-        else:
-            sheet_name = st.text_input("Nom de l'onglet", value="Suivi BE", key="sheet_suivi")
+    # Nom de l'onglet selon le mode
+    if import_mode == "📅 Dernier jour (Bien-être)":
+        sheet_name = st.text_input("Nom de l'onglet", value="Bien-être", key="sheet_bienetre")
+    elif import_mode == "📆 Historique (Suivi BE)":
+        sheet_name = st.text_input("Nom de l'onglet", value="Suivi BE", key="sheet_suivi")
+    else:  # Suivi Poids
+        sheet_name = st.text_input("Nom de l'onglet", value="Suivi Poids", key="sheet_poids")
     
     debug_mode = st.checkbox("🔧 Mode debug (affiche les détails du parsing)", value=False)
     
@@ -2717,7 +2890,7 @@ def page_import():
                     st.error(f"❌ Erreur: {str(e)}")
     
     # === MODE SUIVI BE (historique) ===
-    else:
+    elif import_mode == "📆 Historique (Suivi BE)":
         st.markdown("""
         <div style="background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.3);border-radius:8px;padding:12px;margin-bottom:16px;">
             <div style="color:#60a5fa;font-weight:600;">📆 Import historique</div>
@@ -2880,6 +3053,159 @@ def page_import():
             if not selected:
                 st.warning("👆 Sélectionnez au moins une date pour importer")
     
+    # === MODE SUIVI POIDS ===
+    elif import_mode == "⚖️ Suivi Poids":
+        st.markdown("""
+        <div style="background:rgba(245,158,11,0.1);border:1px solid rgba(245,158,11,0.3);border-radius:8px;padding:12px;margin-bottom:16px;">
+            <div style="color:#fbbf24;font-weight:600;">⚖️ Import du suivi de poids</div>
+            <div style="color:#94a3b8;font-size:13px;">Met à jour le poids des joueurs <b>existants</b> aux dates correspondantes. Les joueurs doivent déjà avoir des données wellness importées.</div>
+        </div>
+        """, unsafe_allow_html=True)
+        
+        col_scan1, col_scan2 = st.columns(2)
+        
+        with col_scan1:
+            if st.button("👁️ Voir le contenu brut", use_container_width=True, key="view_poids"):
+                try:
+                    match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
+                    if match:
+                        doc_id = match.group(1)
+                        encoded_sheet = urllib.parse.quote(sheet_name)
+                        csv_url = f"https://docs.google.com/spreadsheets/d/{doc_id}/gviz/tq?tqx=out:csv&sheet={encoded_sheet}"
+                        
+                        df = pd.read_csv(csv_url, header=None)
+                        st.success(f"✅ {len(df)} lignes × {len(df.columns)} colonnes")
+                        
+                        st.markdown("**Premières lignes:**")
+                        st.dataframe(df.iloc[:15, :15])
+                except Exception as e:
+                    st.error(f"Erreur: {e}")
+        
+        with col_scan2:
+            if st.button("🔍 Scanner les dates disponibles", use_container_width=True, key="scan_poids"):
+                try:
+                    match = re.search(r'/d/([a-zA-Z0-9-_]+)', url)
+                    if not match:
+                        st.error("❌ URL invalide")
+                    else:
+                        doc_id = match.group(1)
+                        encoded_sheet = urllib.parse.quote(sheet_name)
+                        csv_url = f"https://docs.google.com/spreadsheets/d/{doc_id}/gviz/tq?tqx=out:csv&sheet={encoded_sheet}"
+                        
+                        with st.spinner("📡 Téléchargement..."):
+                            df = pd.read_csv(csv_url, header=None)
+                        
+                        st.success(f"✅ {len(df)} lignes × {len(df.columns)} colonnes")
+                        
+                        with st.spinner("🔍 Analyse des dates..."):
+                            result = process_suivi_poids_data(df, selected_dates=None, debug=debug_mode)
+                        
+                        if result['success'] and result.get('mode') == 'list_dates':
+                            st.session_state['suivi_poids_dates'] = result['available_dates']
+                            st.session_state['suivi_poids_df'] = df
+                            st.success(f"✅ {len(result['available_dates'])} dates trouvées !")
+                        else:
+                            st.error(f"❌ Erreur: {result.get('error', 'Erreur inconnue')}")
+                            
+                except Exception as e:
+                    st.error(f"❌ Erreur: {str(e)}")
+        
+        # Étape 2: Afficher les dates et permettre la sélection
+        if 'suivi_poids_dates' in st.session_state and st.session_state['suivi_poids_dates']:
+            available_dates = st.session_state['suivi_poids_dates']
+            
+            st.markdown(f"### 📅 {len(available_dates)} dates disponibles")
+            
+            # Vérifier les dates qui ont déjà des données wellness
+            dates_with_data = set(st.session_state.data.keys())
+            dates_with_match = [d for d in available_dates if d['date'] in dates_with_data]
+            dates_without_match = [d for d in available_dates if d['date'] not in dates_with_data]
+            
+            if dates_without_match:
+                st.warning(f"⚠️ {len(dates_without_match)} dates n'ont pas de données wellness correspondantes et seront ignorées")
+            
+            # Initialiser le compteur
+            if 'poids_multiselect_key' not in st.session_state:
+                st.session_state['poids_multiselect_key'] = 0
+            
+            # Options de sélection rapide
+            col_sel1, col_sel2, col_sel3 = st.columns(3)
+            with col_sel1:
+                if st.button("✅ Tout sélectionner", use_container_width=True, key="sel_all_poids"):
+                    st.session_state['selected_poids_dates'] = [d['date'] for d in dates_with_match]
+                    st.session_state['poids_multiselect_key'] += 1
+                    st.rerun()
+            with col_sel2:
+                if st.button("❌ Tout désélectionner", use_container_width=True, key="desel_all_poids"):
+                    st.session_state['selected_poids_dates'] = []
+                    st.session_state['poids_multiselect_key'] += 1
+                    st.rerun()
+            with col_sel3:
+                if st.button("📅 7 derniers jours", use_container_width=True, key="sel_7_poids"):
+                    st.session_state['selected_poids_dates'] = [d['date'] for d in dates_with_match[-7:]]
+                    st.session_state['poids_multiselect_key'] += 1
+                    st.rerun()
+            
+            # Multi-select des dates (seulement celles avec données wellness)
+            date_options = {d['date']: f"{d['label']} ✓" for d in dates_with_match}
+            default_selection = st.session_state.get('selected_poids_dates', [])
+            
+            selected = st.multiselect(
+                "Sélectionnez les dates à importer (✓ = données wellness existantes)",
+                options=list(date_options.keys()),
+                default=[d for d in default_selection if d in date_options],
+                format_func=lambda x: date_options.get(x, x),
+                key=f"poids_multiselect_{st.session_state['poids_multiselect_key']}"
+            )
+            
+            st.session_state['selected_poids_dates'] = selected
+            st.info(f"📊 **{len(selected)} date(s) sélectionnée(s)**")
+            
+            # Bouton d'import
+            if st.button(f"⚖️ Importer les poids", type="primary", use_container_width=True, key="import_poids", disabled=(len(selected) == 0)):
+                if not selected:
+                    st.warning("⚠️ Sélectionnez au moins une date")
+                else:
+                    try:
+                        df = st.session_state.get('suivi_poids_df')
+                        if df is None:
+                            st.error("❌ Données non chargées. Veuillez rescanner les dates.")
+                        else:
+                            with st.spinner(f"🔄 Import du poids pour {len(selected)} jours..."):
+                                result = process_suivi_poids_data(df, selected_dates=selected, debug=debug_mode)
+                            
+                            if result['success'] and result.get('mode') == 'imported':
+                                st.balloons()
+                                st.success(f"""
+                                ✅ **Import du poids réussi !**
+                                - 📅 Jours mis à jour: **{len(result['dates_imported'])}**
+                                - 👥 Joueurs avec poids: **{result['players_updated']}**
+                                - ⚖️ {result['entries']} valeurs de poids importées
+                                """)
+                                
+                                # Auto-save
+                                save_success, save_msg = save_data_to_file()
+                                if save_success:
+                                    st.info(f"💾 {save_msg}")
+                                
+                                # Nettoyer le cache
+                                if 'suivi_poids_dates' in st.session_state:
+                                    del st.session_state['suivi_poids_dates']
+                                if 'suivi_poids_df' in st.session_state:
+                                    del st.session_state['suivi_poids_df']
+                                if 'selected_poids_dates' in st.session_state:
+                                    del st.session_state['selected_poids_dates']
+                            else:
+                                st.error(f"❌ Erreur: {result.get('error', 'Erreur inconnue')}")
+                                
+                    except Exception as e:
+                        st.error(f"❌ Erreur: {str(e)}")
+                        import traceback
+                        st.code(traceback.format_exc())
+            
+            if not selected:
+                st.warning("👆 Sélectionnez au moins une date pour importer les poids")
+    
     st.markdown("</div>", unsafe_allow_html=True)
     
     # Info box sur le format attendu
@@ -2895,6 +3221,12 @@ def page_import():
         - Les jours sont **côte à côte horizontalement**
         - Chaque bloc contient: Date → En-têtes → EQUIPE → Joueurs
         - Pas de colonne Poids (seulement les métriques wellness)
+        
+        ### ⚖️ Format "Suivi Poids"
+        - **Ligne 1**: Vide puis dates (23/06, 24/06, etc.)
+        - **Colonne A**: Noms des joueurs (doivent correspondre aux joueurs existants)
+        - **Cellules**: Poids en kg
+        - ⚠️ Les joueurs doivent déjà avoir des données wellness pour les dates concernées
         
         **Colonnes reconnues :** Joueur, Sommeil, Charge mentale, Motivation, HDC, BDC, Remarque
         """)
@@ -3180,12 +3512,48 @@ def page_effectif():
     with tabs[2]:
         st.markdown("### 📈 Évolution individuelle")
         
-        col1, col2, col3 = st.columns(3)
-        with col1:
-            sel_player = st.selectbox("Joueur", [p['name'] for p in st.session_state.players], key="evol_player")
-        with col2:
+        # Filtre par catégorie/poste
+        col_filter, col_player, col_period, col_metric = st.columns([1, 2, 1, 1])
+        
+        with col_filter:
+            # Collecter les catégories et postes uniques
+            categories = ["Tous", "Avants", "Trois-quarts"]
+            positions = sorted(set(p.get('position', 'Non défini') for p in st.session_state.players if p.get('position')))
+            filter_options = categories + ["─── Par poste ───"] + positions
+            
+            selected_filter = st.selectbox(
+                "Filtrer", 
+                filter_options,
+                key="evol_filter",
+                format_func=lambda x: x if x != "─── Par poste ───" else "─── Par poste ───"
+            )
+        
+        # Filtrer les joueurs selon la sélection
+        all_players = st.session_state.players
+        if selected_filter == "Tous" or selected_filter == "─── Par poste ───":
+            filtered_players = all_players
+        elif selected_filter == "Avants":
+            avants_positions = ['Pilier', 'Talonneur', 'Deuxième ligne', '2ème ligne', 'Troisième ligne', '3ème ligne', 'Flanker', 'Numéro 8', 'N°8']
+            filtered_players = [p for p in all_players if any(pos.lower() in p.get('position', '').lower() for pos in avants_positions)]
+        elif selected_filter == "Trois-quarts":
+            trois_quarts_positions = ['Demi de mêlée', 'Demi d\'ouverture', 'Centre', 'Ailier', 'Arrière']
+            filtered_players = [p for p in all_players if any(pos.lower() in p.get('position', '').lower() for pos in trois_quarts_positions)]
+        else:
+            # Filtre par poste spécifique
+            filtered_players = [p for p in all_players if p.get('position', '') == selected_filter]
+        
+        # Si aucun joueur après filtre, revenir à tous
+        if not filtered_players:
+            filtered_players = all_players
+        
+        with col_player:
+            player_names = sorted([p['name'] for p in filtered_players])
+            sel_player = st.selectbox("Joueur", player_names, key="evol_player")
+        
+        with col_period:
             period = st.selectbox("Période", [7, 14, 30, 60], index=2, format_func=lambda x: f"{x} jours", key="evol_days")
-        with col3:
+        
+        with col_metric:
             sel_metric = st.selectbox("Métrique", ['global'] + [m['key'] for m in METRICS],
                 format_func=lambda x: "⚡ Global" if x == 'global' else next((f"{m['icon']} {m['label']}" for m in METRICS if m['key'] == x), x), key="evol_metric")
         
