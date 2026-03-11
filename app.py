@@ -1356,10 +1356,19 @@ def process_suivi_poids_data(df, selected_dates=None, debug=False):
         if debug:
             st.write("### 🔍 Analyse du fichier Suivi Poids")
             st.write(f"**Dimensions:** {len(df)} lignes × {len(df.columns)} colonnes")
+            st.write("**Premières cellules de la ligne 0 (dates):**")
+            for i in range(min(10, len(df.columns))):
+                st.write(f"  Col {i}: `{df.iloc[0, i]}`")
         
         # 1. Extraire les dates depuis la première ligne
         date_row = df.iloc[0]
         dates_info = []
+        
+        # Récupérer les dates existantes dans les données wellness pour référence
+        existing_wellness_dates = set(st.session_state.data.keys())
+        
+        if debug:
+            st.write(f"**Dates wellness existantes (exemples):** {list(existing_wellness_dates)[:5]}")
         
         for col_idx in range(1, len(date_row)):
             cell = date_row.iloc[col_idx]
@@ -1393,8 +1402,13 @@ def process_suivi_poids_data(df, selected_dates=None, debug=False):
             return {'success': False, 'error': "Aucune date trouvée dans la première ligne."}
         
         if debug:
-            st.write(f"**Dates trouvées:** {len(dates_info)}")
-            st.write(f"Du {dates_info[0]['date_str']} au {dates_info[-1]['date_str']}")
+            st.write(f"**Dates trouvées dans le fichier:** {len(dates_info)}")
+            st.write(f"Du {dates_info[0]['date_str']} ({dates_info[0]['date']}) au {dates_info[-1]['date_str']} ({dates_info[-1]['date']})")
+            # Vérifier combien matchent
+            matching = [d for d in dates_info if d['date'] in existing_wellness_dates]
+            st.write(f"**Dates qui correspondent aux données wellness:** {len(matching)}")
+            if not matching and dates_info:
+                st.warning(f"⚠️ Aucune correspondance! Exemple date fichier: {dates_info[0]['date']}, Exemple date wellness: {list(existing_wellness_dates)[0] if existing_wellness_dates else 'N/A'}")
         
         # Si aucune date sélectionnée, retourner la liste des dates disponibles
         if selected_dates is None:
@@ -1409,11 +1423,16 @@ def process_suivi_poids_data(df, selected_dates=None, debug=False):
         
         if debug:
             st.write(f"**Joueurs existants:** {len(existing_players)}")
+            st.write("**Premiers noms dans le fichier:**")
+            for i in range(1, min(6, len(df))):
+                st.write(f"  Ligne {i}: `{df.iloc[i, 0]}`")
         
         # 3. Parcourir les lignes (joueurs) et colonnes (dates) pour mettre à jour le poids
         updates_count = 0
         players_updated = set()
         dates_updated = set()
+        players_not_found = set()
+        dates_not_found = set()
         
         for row_idx in range(1, len(df)):  # Commencer à la ligne 1 (après les dates)
             row = df.iloc[row_idx]
@@ -1441,8 +1460,7 @@ def process_suivi_poids_data(df, selected_dates=None, debug=False):
                         break
             
             if not matched_name:
-                if debug and row_idx <= 5:
-                    st.write(f"  ⚠️ Joueur non trouvé: {player_name_raw}")
+                players_not_found.add(player_name_raw)
                 continue
             
             # Parcourir les dates sélectionnées et mettre à jour le poids
@@ -1454,6 +1472,11 @@ def process_suivi_poids_data(df, selected_dates=None, debug=False):
                 date_key = date_info['date']
                 
                 if col_idx >= len(row):
+                    continue
+                
+                # Vérifier si cette date existe dans les données wellness
+                if date_key not in st.session_state.data:
+                    dates_not_found.add(date_key)
                     continue
                 
                 weight_val = row.iloc[col_idx]
@@ -1476,18 +1499,20 @@ def process_suivi_poids_data(df, selected_dates=None, debug=False):
                     continue
                 
                 # Mettre à jour le poids dans les données wellness de cette date
-                if date_key in st.session_state.data:
-                    for entry in st.session_state.data[date_key]:
-                        if entry.get('name') == matched_name:
-                            entry['weight'] = round(weight, 1)
-                            updates_count += 1
-                            players_updated.add(matched_name)
-                            dates_updated.add(date_key)
-                            break
-                    else:
-                        # Le joueur n'a pas d'entrée pour cette date, en créer une avec juste le poids
-                        # (optionnel - seulement si on veut créer des entrées)
-                        pass
+                for entry in st.session_state.data[date_key]:
+                    if entry.get('name') == matched_name:
+                        entry['weight'] = round(weight, 1)
+                        updates_count += 1
+                        players_updated.add(matched_name)
+                        dates_updated.add(date_key)
+                        break
+        
+        if debug:
+            if players_not_found:
+                st.write(f"**Joueurs non trouvés ({len(players_not_found)}):** {list(players_not_found)[:10]}")
+            if dates_not_found:
+                st.write(f"**Dates sans données wellness ({len(dates_not_found)}):** {list(dates_not_found)[:10]}")
+            st.write(f"**Mises à jour:** {updates_count}")
         
         if updates_count > 0:
             # AUTO-SAVE après import réussi
@@ -1502,9 +1527,14 @@ def process_suivi_poids_data(df, selected_dates=None, debug=False):
                 'message': f"Poids mis à jour pour {len(players_updated)} joueurs sur {len(dates_updated)} dates"
             }
         else:
+            error_msg = "Aucun poids mis à jour."
+            if players_not_found:
+                error_msg += f" {len(players_not_found)} joueurs non reconnus."
+            if dates_not_found:
+                error_msg += f" {len(dates_not_found)} dates sans données wellness."
             return {
                 'success': False, 
-                'error': "Aucun poids mis à jour. Vérifiez que les joueurs existent et que les dates correspondent."
+                'error': error_msg
             }
         
     except Exception as e:
@@ -2047,6 +2077,133 @@ def create_metrics_evolution_chart(player_name, metric='global', days=30):
         xaxis=dict(showgrid=False),
         showlegend=False
     )
+    return fig
+
+
+def create_group_evolution_chart(group_type, position=None, metric='global', days=30):
+    """
+    Crée un graphique d'évolution de la moyenne d'un groupe.
+    
+    group_type: 'team', 'Avants', 'Trois-quarts', ou 'position'
+    position: Nom du poste si group_type='position'
+    metric: 'global' ou une clé de métrique
+    days: nombre de jours
+    """
+    dates = sorted(st.session_state.data.keys())[-days:]
+    if len(dates) < 2:
+        return None
+    
+    # Définir les postes Avants et Trois-quarts
+    avants_positions = ['pilier', 'talonneur', 'deuxième ligne', '2ème ligne', 'troisième ligne', '3ème ligne', 'flanker', 'numéro 8', 'n°8']
+    trois_quarts_positions = ['demi de mêlée', 'demi d\'ouverture', 'centre', 'ailier', 'arrière']
+    
+    chart_data = []
+    
+    for date in dates:
+        day_data = st.session_state.data.get(date, [])
+        if not day_data:
+            continue
+        
+        day_values = []
+        
+        for d in day_data:
+            # Trouver le joueur pour vérifier son poste
+            player = next((p for p in st.session_state.players if p['name'] == d['name']), None)
+            if not player:
+                continue
+            
+            player_position = player.get('position', '').lower()
+            
+            # Filtrer selon le groupe
+            include_player = False
+            
+            if group_type == 'team':
+                include_player = True
+            elif group_type == 'Avants':
+                include_player = any(pos in player_position for pos in avants_positions)
+            elif group_type == 'Trois-quarts':
+                include_player = any(pos in player_position for pos in trois_quarts_positions)
+            elif group_type == 'position' and position:
+                include_player = player.get('position', '') == position
+            
+            if not include_player:
+                continue
+            
+            # Calculer la valeur
+            if metric == 'global':
+                val = get_player_average(d)
+            else:
+                val = d.get(metric)
+            
+            if val is not None:
+                day_values.append(val)
+        
+        if day_values:
+            avg = sum(day_values) / len(day_values)
+            chart_data.append({
+                'date': format_date(date),
+                'value': round(avg, 2),
+                'count': len(day_values)
+            })
+    
+    if len(chart_data) < 2:
+        return None
+    
+    df = pd.DataFrame(chart_data)
+    
+    # Déterminer la couleur selon le groupe
+    if group_type == 'Avants':
+        color = '#ef4444'  # Rouge
+    elif group_type == 'Trois-quarts':
+        color = '#3b82f6'  # Bleu
+    elif group_type == 'team':
+        color = '#10b981'  # Vert
+    else:
+        color = '#f59e0b'  # Orange pour les postes
+    
+    fig = go.Figure()
+    
+    # Zones de couleur
+    fig.add_hrect(y0=0, y1=2, fillcolor="rgba(239,68,68,0.1)", line_width=0)
+    fig.add_hrect(y0=2, y1=3, fillcolor="rgba(245,158,11,0.1)", line_width=0)
+    fig.add_hrect(y0=3, y1=5, fillcolor="rgba(16,185,129,0.1)", line_width=0)
+    
+    # Titre du groupe
+    if group_type == 'team':
+        title = "Moyenne Équipe"
+    elif group_type == 'position':
+        title = f"Moyenne {position}"
+    else:
+        title = f"Moyenne {group_type}"
+    
+    fig.add_trace(go.Scatter(
+        x=df['date'],
+        y=df['value'],
+        mode='lines+markers',
+        name=title,
+        line=dict(color=color, width=3),
+        marker=dict(size=8, color=color, line=dict(color='white', width=2)),
+        fill='tozeroy',
+        fillcolor=f'rgba({int(color[1:3], 16)},{int(color[3:5], 16)},{int(color[5:7], 16)},0.1)',
+        hovertemplate='%{x}<br>Moyenne: %{y:.2f}/5<extra></extra>'
+    ))
+    
+    # Calculer la moyenne globale pour référence
+    avg_all = sum(d['value'] for d in chart_data) / len(chart_data)
+    fig.add_hline(y=avg_all, line_dash="dash", line_color="#64748b", 
+                  annotation_text=f"Moy: {avg_all:.2f}", annotation_position="right")
+    
+    fig.update_layout(
+        paper_bgcolor='rgba(0,0,0,0)',
+        plot_bgcolor='rgba(15,23,42,0.8)',
+        font=dict(color='#94a3b8'),
+        margin=dict(l=40, r=60, t=30, b=40),
+        height=280,
+        yaxis=dict(range=[0, 5], showgrid=True, gridcolor='#1e293b', title="Score moyen"),
+        xaxis=dict(showgrid=False),
+        showlegend=False
+    )
+    
     return fig
 
 def zscore_series(metric='global', group=None, days=30):
@@ -3510,55 +3667,75 @@ def page_effectif():
     
     # === TAB ÉVOLUTION ===
     with tabs[2]:
-        st.markdown("### 📈 Évolution individuelle")
+        st.markdown("### 📈 Évolution")
         
-        # Filtre par catégorie/poste
-        col_filter, col_player, col_period, col_metric = st.columns([1, 2, 1, 1])
+        # Construire les options: Joueurs individuels + Groupes
+        player_names = sorted([p['name'] for p in st.session_state.players])
+        positions = sorted(set(p.get('position', 'Non défini') for p in st.session_state.players if p.get('position') and p.get('position') != 'Non défini'))
         
-        with col_filter:
-            # Collecter les catégories et postes uniques
-            categories = ["Tous", "Avants", "Trois-quarts"]
-            positions = sorted(set(p.get('position', 'Non défini') for p in st.session_state.players if p.get('position')))
-            filter_options = categories + ["─── Par poste ───"] + positions
-            
-            selected_filter = st.selectbox(
-                "Filtrer", 
-                filter_options,
-                key="evol_filter",
-                format_func=lambda x: x if x != "─── Par poste ───" else "─── Par poste ───"
+        # Options structurées
+        options = []
+        options.append("─── Groupes ───")
+        options.append("📊 Moyenne Équipe")
+        options.append("🔴 Moyenne Avants")
+        options.append("🔵 Moyenne Trois-quarts")
+        if positions:
+            options.append("─── Par poste ───")
+            for pos in positions:
+                options.append(f"📍 Moyenne {pos}")
+        options.append("─── Joueurs ───")
+        options.extend(player_names)
+        
+        col1, col2, col3 = st.columns([2, 1, 1])
+        
+        with col1:
+            selection = st.selectbox(
+                "Joueur ou groupe",
+                options,
+                index=options.index(player_names[0]) if player_names else 0,
+                key="evol_selection",
+                format_func=lambda x: x
             )
         
-        # Filtrer les joueurs selon la sélection
-        all_players = st.session_state.players
-        if selected_filter == "Tous" or selected_filter == "─── Par poste ───":
-            filtered_players = all_players
-        elif selected_filter == "Avants":
-            avants_positions = ['Pilier', 'Talonneur', 'Deuxième ligne', '2ème ligne', 'Troisième ligne', '3ème ligne', 'Flanker', 'Numéro 8', 'N°8']
-            filtered_players = [p for p in all_players if any(pos.lower() in p.get('position', '').lower() for pos in avants_positions)]
-        elif selected_filter == "Trois-quarts":
-            trois_quarts_positions = ['Demi de mêlée', 'Demi d\'ouverture', 'Centre', 'Ailier', 'Arrière']
-            filtered_players = [p for p in all_players if any(pos.lower() in p.get('position', '').lower() for pos in trois_quarts_positions)]
-        else:
-            # Filtre par poste spécifique
-            filtered_players = [p for p in all_players if p.get('position', '') == selected_filter]
+        with col2:
+            period = st.selectbox("Période", [7, 14, 30, 60, 90], index=2, format_func=lambda x: f"{x} jours", key="evol_days")
         
-        # Si aucun joueur après filtre, revenir à tous
-        if not filtered_players:
-            filtered_players = all_players
-        
-        with col_player:
-            player_names = sorted([p['name'] for p in filtered_players])
-            sel_player = st.selectbox("Joueur", player_names, key="evol_player")
-        
-        with col_period:
-            period = st.selectbox("Période", [7, 14, 30, 60], index=2, format_func=lambda x: f"{x} jours", key="evol_days")
-        
-        with col_metric:
+        with col3:
             sel_metric = st.selectbox("Métrique", ['global'] + [m['key'] for m in METRICS],
                 format_func=lambda x: "⚡ Global" if x == 'global' else next((f"{m['icon']} {m['label']}" for m in METRICS if m['key'] == x), x), key="evol_metric")
         
-        if sel_player:
-            fig = create_metrics_evolution_chart(sel_player, sel_metric, period)
+        # Déterminer le type de sélection
+        if selection.startswith("───") or not selection:
+            st.info("👆 Sélectionnez un joueur ou un groupe")
+        elif selection.startswith("📊 Moyenne Équipe"):
+            fig = create_group_evolution_chart(group_type="team", metric=sel_metric, days=period)
+            if fig:
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("Pas assez de données")
+        elif selection.startswith("🔴 Moyenne Avants"):
+            fig = create_group_evolution_chart(group_type="Avants", metric=sel_metric, days=period)
+            if fig:
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("Pas assez de données pour les Avants")
+        elif selection.startswith("🔵 Moyenne Trois-quarts"):
+            fig = create_group_evolution_chart(group_type="Trois-quarts", metric=sel_metric, days=period)
+            if fig:
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info("Pas assez de données pour les Trois-quarts")
+        elif selection.startswith("📍 Moyenne "):
+            # Extraire le nom du poste
+            position_name = selection.replace("📍 Moyenne ", "")
+            fig = create_group_evolution_chart(group_type="position", position=position_name, metric=sel_metric, days=period)
+            if fig:
+                st.plotly_chart(fig, use_container_width=True)
+            else:
+                st.info(f"Pas assez de données pour {position_name}")
+        else:
+            # C'est un joueur individuel
+            fig = create_metrics_evolution_chart(selection, sel_metric, period)
             if fig:
                 st.plotly_chart(fig, use_container_width=True)
             else:
