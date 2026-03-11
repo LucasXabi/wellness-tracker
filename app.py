@@ -1356,9 +1356,11 @@ def process_suivi_poids_data(df, selected_dates=None, debug=False):
         if debug:
             st.write("### 🔍 Analyse du fichier Suivi Poids")
             st.write(f"**Dimensions:** {len(df)} lignes × {len(df.columns)} colonnes")
-            st.write("**Premières cellules de la ligne 0 (dates):**")
-            for i in range(min(10, len(df.columns))):
-                st.write(f"  Col {i}: `{df.iloc[0, i]}`")
+            st.write("**Structure détectée:**")
+            for i in range(min(5, len(df.columns))):
+                st.write(f"  Col {i}, Ligne 0: `{df.iloc[0, i]}`")
+            if len(df) > 1 and len(df.columns) > 1:
+                st.write(f"  Col 1, Ligne 1 (1er joueur): `{df.iloc[1, 1]}`")
         
         # 1. Extraire les dates depuis la première ligne
         date_row = df.iloc[0]
@@ -1423,9 +1425,10 @@ def process_suivi_poids_data(df, selected_dates=None, debug=False):
         
         if debug:
             st.write(f"**Joueurs existants:** {len(existing_players)}")
-            st.write("**Premiers noms dans le fichier:**")
+            st.write("**Premiers noms dans le fichier (colonne 1):**")
             for i in range(1, min(6, len(df))):
-                st.write(f"  Ligne {i}: `{df.iloc[i, 0]}`")
+                if len(df.columns) > 1:
+                    st.write(f"  Ligne {i}: `{df.iloc[i, 1]}`")
         
         # 3. Parcourir les lignes (joueurs) et colonnes (dates) pour mettre à jour le poids
         updates_count = 0
@@ -1436,7 +1439,12 @@ def process_suivi_poids_data(df, selected_dates=None, debug=False):
         
         for row_idx in range(1, len(df)):  # Commencer à la ligne 1 (après les dates)
             row = df.iloc[row_idx]
-            player_name_raw = row.iloc[0]
+            
+            # Les noms sont en colonne 1 (pas colonne 0 qui contient l'index)
+            if len(row) < 2:
+                continue
+            
+            player_name_raw = row.iloc[1]  # COLONNE 1 = noms des joueurs
             
             if pd.isna(player_name_raw):
                 continue
