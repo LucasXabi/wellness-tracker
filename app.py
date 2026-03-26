@@ -790,29 +790,46 @@ def load_from_gsheet():
         return False, "GOOGLE_SCRIPT_URL non configuré"
     
     try:
-        response = requests.get(script_url, timeout=60)
+        # Google Apps Script peut rediriger, on doit suivre
+        session = requests.Session()
+        response = session.get(script_url, timeout=60, allow_redirects=True)
         
-        if response.status_code == 200:
-            try:
-                loaded = response.json()
-                
-                # Vérifier que c'est bien des données valides
-                if 'players' in loaded or 'data' in loaded:
-                    st.session_state.players = loaded.get('players', [])
-                    st.session_state.data = loaded.get('data', {})
-                    st.session_state.injuries = loaded.get('injuries', [])
-                    if 'settings' in loaded:
-                        for k, v in loaded['settings'].items():
-                            if not k.startswith('cloud_'):
-                                st.session_state.settings[k] = v
-                    
-                    return True, f"✅ Chargé ({len(st.session_state.players)} joueurs, {len(st.session_state.data)} jours)"
-                else:
-                    return False, "Données vides ou invalides"
-            except json.JSONDecodeError:
-                return False, "Données corrompues dans le Sheet"
-        else:
+        # Debug: afficher le status et le début de la réponse
+        if response.status_code != 200:
             return False, f"Erreur HTTP: {response.status_code}"
+        
+        # Vérifier que c'est bien du JSON
+        content_type = response.headers.get('Content-Type', '')
+        response_text = response.text.strip()
+        
+        # Si c'est du HTML (page d'erreur Google), c'est un problème
+        if response_text.startswith('<!DOCTYPE') or response_text.startswith('<html'):
+            return False, "Google renvoie une page HTML. Vérifiez que le script est bien déployé en 'Application Web' avec accès 'Tout le monde'."
+        
+        # Parser le JSON
+        try:
+            loaded = response.json()
+        except json.JSONDecodeError as e:
+            # Peut-être que c'est vide ou mal formé
+            if not response_text or response_text == '{}':
+                return False, "Aucune donnée dans Google Sheets (normal si première utilisation)"
+            return False, f"JSON invalide: {str(e)[:50]}"
+        
+        # Vérifier que c'est bien des données valides
+        if 'players' in loaded or 'data' in loaded:
+            st.session_state.players = loaded.get('players', [])
+            st.session_state.data = loaded.get('data', {})
+            st.session_state.injuries = loaded.get('injuries', [])
+            if 'settings' in loaded:
+                for k, v in loaded['settings'].items():
+                    if not k.startswith('cloud_'):
+                        st.session_state.settings[k] = v
+            
+            return True, f"✅ Chargé ({len(st.session_state.players)} joueurs, {len(st.session_state.data)} jours)"
+        elif 'error' in loaded:
+            return False, f"Erreur Google: {loaded['error']}"
+        else:
+            return False, "Données vides ou format invalide"
             
     except requests.exceptions.Timeout:
         return False, "Timeout"
@@ -904,23 +921,34 @@ if 'data_loaded' not in st.session_state:
     if is_gsheet_configured():
         try:
             script_url = get_gsheet_script_url()
-            response = requests.get(script_url, timeout=30)
+            # Utiliser une session pour suivre les redirections
+            session = requests.Session()
+            response = session.get(script_url, timeout=30, allow_redirects=True)
+            
             if response.status_code == 200:
-                cloud_data = response.json()
-                cloud_data_count = len(cloud_data.get('data', {}))
+                response_text = response.text.strip()
                 
-                # Si Google Sheets a des données, les utiliser
-                if cloud_data_count > 0 and cloud_data_count >= local_data_count:
-                    st.session_state.players = cloud_data.get('players', [])
-                    st.session_state.data = cloud_data.get('data', {})
-                    st.session_state.injuries = cloud_data.get('injuries', [])
-                    if 'settings' in cloud_data:
-                        for k, v in cloud_data['settings'].items():
-                            if not k.startswith('cloud_'):
-                                st.session_state.settings[k] = v
-                    st.session_state.cloud_loaded = True
-                    st.session_state.storage_source = "gsheet"
-        except:
+                # Vérifier que ce n'est pas une page HTML (erreur Google)
+                if not response_text.startswith('<!') and not response_text.startswith('<html'):
+                    try:
+                        cloud_data = response.json()
+                        cloud_data_count = len(cloud_data.get('data', {}))
+                        
+                        # Si Google Sheets a des données, les utiliser
+                        if cloud_data_count > 0 and cloud_data_count >= local_data_count:
+                            st.session_state.players = cloud_data.get('players', [])
+                            st.session_state.data = cloud_data.get('data', {})
+                            st.session_state.injuries = cloud_data.get('injuries', [])
+                            if 'settings' in cloud_data:
+                                for k, v in cloud_data['settings'].items():
+                                    if not k.startswith('cloud_'):
+                                        st.session_state.settings[k] = v
+                            st.session_state.cloud_loaded = True
+                            st.session_state.storage_source = "gsheet"
+                    except json.JSONDecodeError:
+                        pass  # JSON invalide, garder les données locales
+        except Exception as e:
+            # En cas d'erreur, garder les données locales
             pass
     
     # 5. PRIORITÉ 2: JSONBlob (legacy, si Google Sheets pas configuré)
@@ -2805,6 +2833,8 @@ def show_player_modal(player_id):
             for p in st.session_state.players:
                 if p['id'] == player_id:
                     p['status'] = new_status
+            # Sauvegarder dans le cloud
+            cloud_save()
             st.success(f"✅ Statut mis à jour: {new_status}")
             st.rerun()
 
@@ -3817,6 +3847,8 @@ def page_infirmerie():
                 for player in st.session_state.players:
                     if player['id'] == p['id']:
                         player['status'] = new_status
+                # Sauvegarder dans le cloud
+                cloud_save()
                 st.rerun()
         
         with col3:
@@ -3853,6 +3885,8 @@ def page_infirmerie():
                             'status': 'Active'
                         })
                         st.session_state[f'show_injury_{p["id"]}'] = False
+                        # Sauvegarder dans le cloud
+                        cloud_save()
                         st.success("✅ Blessure enregistrée")
                         st.rerun()
                 with col_s2:
@@ -3901,6 +3935,8 @@ def page_infirmerie():
                     for injury in st.session_state.injuries:
                         if injury['id'] == inj['id']:
                             injury['status'] = 'Healed'
+                    # Sauvegarder dans le cloud
+                    cloud_save()
                     st.success("✅ Joueur marqué comme guéri")
                     st.rerun()
             
@@ -3931,6 +3967,8 @@ def page_joueurs():
                             'id': f"p_{len(st.session_state.players)}_{datetime.now().timestamp():.0f}",
                             'name': name, 'position': position, 'targetWeight': weight, 'status': status
                         })
+                        # Sauvegarder dans le cloud
+                        cloud_save()
                         st.success(f"✅ {name} ajouté à l'effectif !")
                         st.rerun()
                     else:
@@ -3980,6 +4018,9 @@ def page_joueurs():
                     for player in st.session_state.players:
                         if player['id'] == p['id']:
                             player['status'] = new_status
+                    # Sauvegarder dans le cloud
+                    cloud_save()
+                    st.rerun()
             
             with col5:
                 # Confirmation de suppression
@@ -4262,6 +4303,48 @@ function doPost(e) {
         </div>
     </div>
     """, unsafe_allow_html=True)
+    
+    # Debug Google Sheets
+    with st.expander("🔧 Debug Google Sheets"):
+        script_url = get_gsheet_script_url()
+        if script_url:
+            st.code(f"URL: {script_url[:50]}...{script_url[-20:]}" if len(script_url) > 70 else f"URL: {script_url}")
+            
+            if st.button("🧪 Tester la connexion", key="test_gsheet"):
+                with st.spinner("Test en cours..."):
+                    try:
+                        session = requests.Session()
+                        response = session.get(script_url, timeout=30, allow_redirects=True)
+                        
+                        st.write(f"**Status HTTP:** {response.status_code}")
+                        st.write(f"**Content-Type:** {response.headers.get('Content-Type', 'N/A')}")
+                        
+                        response_text = response.text[:500]
+                        st.write(f"**Réponse (500 premiers caractères):**")
+                        st.code(response_text)
+                        
+                        if response_text.startswith('<!') or response_text.startswith('<html'):
+                            st.error("❌ Google renvoie une page HTML. Le script n'est pas bien déployé.")
+                            st.info("💡 Vérifiez que le déploiement est en 'Application Web' avec accès 'Tout le monde'.")
+                        else:
+                            try:
+                                data = response.json()
+                                st.success(f"✅ JSON valide ! {len(data.get('players', []))} joueurs, {len(data.get('data', {}))} jours")
+                            except:
+                                st.warning("⚠️ Réponse non-JSON. Peut-être vide (normal si première utilisation).")
+                    except Exception as e:
+                        st.error(f"❌ Erreur: {str(e)}")
+        else:
+            st.warning("GOOGLE_SCRIPT_URL non configuré dans les Secrets")
+        
+        # Infos sur la source de données actuelle
+        st.markdown("---")
+        st.write("**Source de données actuelle:**")
+        if st.session_state.get('cloud_loaded'):
+            source = st.session_state.get('storage_source', 'inconnu')
+            st.success(f"✅ Chargé depuis: {source}")
+        else:
+            st.info("📁 Données locales uniquement")
     
     st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
     
