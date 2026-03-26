@@ -466,14 +466,14 @@ def save_data_to_file():
     """Sauvegarde les données dans un fichier JSON"""
     try:
         data_to_save = {
-            'players': st.session_state.players,
-            'data': st.session_state.data,
-            'injuries': st.session_state.injuries,
-            'settings': {k: v for k, v in st.session_state.settings.items() if not k.startswith('cloud_')},
+            'players': list(st.session_state.players) if st.session_state.players else [],
+            'data': dict(st.session_state.data) if st.session_state.data else {},
+            'injuries': list(st.session_state.injuries) if st.session_state.injuries else [],
+            'settings': {k: v for k, v in st.session_state.settings.items() if not k.startswith('cloud_') and isinstance(v, (str, int, float, bool, list, dict, type(None)))},
             'saved_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
         }
         with open(DATA_FILE, 'w', encoding='utf-8') as f:
-            json.dump(data_to_save, f, ensure_ascii=False, indent=2)
+            json.dump(data_to_save, f, ensure_ascii=False, indent=2, default=str)
         st.session_state.last_save_time = datetime.now()
         
         # Auto-save to cloud
@@ -506,13 +506,13 @@ def load_data_from_file():
 def export_data_to_json():
     """Exporte les données en JSON pour téléchargement"""
     data_to_export = {
-        'players': st.session_state.players,
-        'data': st.session_state.data,
-        'injuries': st.session_state.injuries,
-        'settings': {k: v for k, v in st.session_state.settings.items() if not k.startswith('cloud_')},
+        'players': list(st.session_state.players) if st.session_state.players else [],
+        'data': dict(st.session_state.data) if st.session_state.data else {},
+        'injuries': list(st.session_state.injuries) if st.session_state.injuries else [],
+        'settings': {k: v for k, v in st.session_state.settings.items() if not k.startswith('cloud_') and isinstance(v, (str, int, float, bool, list, dict, type(None)))},
         'exported_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S')
     }
-    return json.dumps(data_to_export, ensure_ascii=False, indent=2)
+    return json.dumps(data_to_export, ensure_ascii=False, indent=2, default=str)
 
 def import_data_from_json(json_content):
     """Importe les données depuis un fichier JSON uploadé"""
@@ -584,16 +584,22 @@ def is_cloud_id_in_secrets():
 def save_to_cloud():
     """Sauvegarde automatique dans le cloud"""
     try:
+        # Préparer les données de manière sécurisée
         data_to_save = {
-            'players': st.session_state.players,
-            'data': st.session_state.data,
-            'injuries': st.session_state.injuries,
-            'settings': {k: v for k, v in st.session_state.settings.items() if not k.startswith('cloud_')},
+            'players': list(st.session_state.players) if st.session_state.players else [],
+            'data': dict(st.session_state.data) if st.session_state.data else {},
+            'injuries': list(st.session_state.injuries) if st.session_state.injuries else [],
+            'settings': {k: v for k, v in st.session_state.settings.items() if not k.startswith('cloud_') and isinstance(v, (str, int, float, bool, list, dict, type(None)))},
             'saved_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            'app_version': 'v16'
+            'app_version': 'v17'
         }
         
-        json_data = json.dumps(data_to_save, ensure_ascii=False)
+        # Sérialiser avec gestion d'erreur
+        try:
+            json_data = json.dumps(data_to_save, ensure_ascii=False, default=str)
+        except Exception as json_err:
+            return False, f"Erreur JSON: {str(json_err)}"
+        
         headers = {'Content-Type': 'application/json', 'Accept': 'application/json'}
         
         blob_id = get_cloud_id()
@@ -601,21 +607,22 @@ def save_to_cloud():
         if blob_id:
             # Mettre à jour le blob existant
             url = f"https://jsonblob.com/api/jsonBlob/{blob_id}"
-            response = requests.put(url, data=json_data.encode('utf-8'), headers=headers, timeout=30)
+            response = requests.put(url, data=json_data.encode('utf-8'), headers=headers, timeout=60)
             
             if response.status_code == 200:
                 st.session_state.last_cloud_save = datetime.now()
                 return True, "☁️ Synchronisé"
             elif response.status_code == 404:
-                # Blob supprimé, en créer un nouveau
+                # Blob supprimé, réinitialiser l'ID et créer un nouveau (sans récursion)
                 st.session_state.settings['cloud_blob_id'] = None
-                return save_to_cloud()
+                blob_id = None  # Forcer la création ci-dessous
             else:
                 return False, f"Erreur: {response.status_code}"
-        else:
-            # Créer un nouveau blob
+        
+        # Créer un nouveau blob (si pas de blob_id ou si 404)
+        if not blob_id:
             url = "https://jsonblob.com/api/jsonBlob"
-            response = requests.post(url, data=json_data.encode('utf-8'), headers=headers, timeout=30)
+            response = requests.post(url, data=json_data.encode('utf-8'), headers=headers, timeout=60)
             
             if response.status_code == 201:
                 location = response.headers.get('Location', '')
@@ -623,12 +630,14 @@ def save_to_cloud():
                     new_blob_id = location.split('/')[-1]
                     save_cloud_id(new_blob_id)
                     st.session_state.last_cloud_save = datetime.now()
-                    st.session_state.new_cloud_id_created = new_blob_id  # Flag pour afficher les instructions
+                    st.session_state.new_cloud_id_created = new_blob_id
                     return True, "☁️ Cloud créé"
             return False, f"Erreur création: {response.status_code}"
         
+        return False, "Erreur inconnue"
+        
     except requests.exceptions.Timeout:
-        return False, "Timeout"
+        return False, "Timeout - données trop volumineuses?"
     except Exception as e:
         return False, f"Erreur: {str(e)}"
 
