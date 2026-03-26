@@ -476,8 +476,8 @@ def save_data_to_file():
             json.dump(data_to_save, f, ensure_ascii=False, indent=2, default=str)
         st.session_state.last_save_time = datetime.now()
         
-        # Auto-save to cloud
-        save_to_cloud()
+        # Auto-save to cloud (Google Sheets ou JSONBlob)
+        cloud_save()
         
         return True, f"Données sauvegardées ({len(st.session_state.players)} joueurs, {len(st.session_state.data)} jours)"
     except Exception as e:
@@ -582,7 +582,7 @@ def is_cloud_id_in_secrets():
         return False
 
 def save_to_cloud():
-    """Sauvegarde automatique dans le cloud"""
+    """Sauvegarde automatique dans le cloud - Version sécurisée"""
     try:
         # Préparer les données de manière sécurisée
         data_to_save = {
@@ -603,26 +603,56 @@ def save_to_cloud():
         headers = {'Content-Type': 'application/json', 'Accept': 'application/json'}
         
         blob_id = get_cloud_id()
+        id_from_secrets = is_cloud_id_in_secrets()
         
         if blob_id:
-            # Mettre à jour le blob existant
+            # Mettre à jour le blob existant avec retry
             url = f"https://jsonblob.com/api/jsonBlob/{blob_id}"
-            response = requests.put(url, data=json_data.encode('utf-8'), headers=headers, timeout=60)
             
-            if response.status_code == 200:
-                st.session_state.last_cloud_save = datetime.now()
-                return True, "☁️ Synchronisé"
-            elif response.status_code == 404:
-                # Blob supprimé, réinitialiser l'ID et créer un nouveau (sans récursion)
-                st.session_state.settings['cloud_blob_id'] = None
-                blob_id = None  # Forcer la création ci-dessous
-            else:
-                return False, f"Erreur: {response.status_code}"
+            # Essayer jusqu'à 3 fois
+            last_error = None
+            for attempt in range(3):
+                try:
+                    response = requests.put(url, data=json_data.encode('utf-8'), headers=headers, timeout=90)
+                    
+                    if response.status_code == 200:
+                        st.session_state.last_cloud_save = datetime.now()
+                        return True, "☁️ Synchronisé"
+                    elif response.status_code == 404:
+                        # SÉCURITÉ : Si l'ID vient des Secrets, NE JAMAIS créer de nouveau blob
+                        if id_from_secrets:
+                            return False, "⚠️ Blob introuvable. Contactez l'admin pour vérifier le CLOUD_BLOB_ID dans les Secrets."
+                        else:
+                            # ID local seulement, on peut créer un nouveau blob
+                            blob_id = None
+                            break
+                    else:
+                        last_error = f"Code {response.status_code}"
+                        if attempt < 2:
+                            import time
+                            time.sleep(2)  # Attendre avant retry
+                except requests.exceptions.Timeout:
+                    last_error = "Timeout"
+                    if attempt < 2:
+                        import time
+                        time.sleep(2)
+                except Exception as e:
+                    last_error = str(e)
+                    if attempt < 2:
+                        import time
+                        time.sleep(2)
+            
+            if blob_id and last_error:
+                return False, f"Erreur après 3 essais: {last_error}"
         
-        # Créer un nouveau blob (si pas de blob_id ou si 404)
+        # Créer un nouveau blob SEULEMENT si pas d'ID existant (première utilisation)
         if not blob_id:
+            # Vérifier qu'on n'a vraiment pas d'ID dans les Secrets
+            if id_from_secrets:
+                return False, "⚠️ ID dans Secrets mais blob non trouvé. Vérifiez la configuration."
+            
             url = "https://jsonblob.com/api/jsonBlob"
-            response = requests.post(url, data=json_data.encode('utf-8'), headers=headers, timeout=60)
+            response = requests.post(url, data=json_data.encode('utf-8'), headers=headers, timeout=90)
             
             if response.status_code == 201:
                 location = response.headers.get('Location', '')
@@ -631,13 +661,13 @@ def save_to_cloud():
                     save_cloud_id(new_blob_id)
                     st.session_state.last_cloud_save = datetime.now()
                     st.session_state.new_cloud_id_created = new_blob_id
-                    return True, "☁️ Cloud créé"
+                    return True, "☁️ Cloud créé - Ajoutez l'ID aux Secrets!"
             return False, f"Erreur création: {response.status_code}"
         
-        return False, "Erreur inconnue"
+        return True, "☁️ Synchronisé"
         
     except requests.exceptions.Timeout:
-        return False, "Timeout - données trop volumineuses?"
+        return False, "Timeout - réessayez"
     except Exception as e:
         return False, f"Erreur: {str(e)}"
 
@@ -689,6 +719,141 @@ def get_cloud_status():
     blob_id = get_cloud_id()
     return (True, blob_id) if blob_id else (False, None)
 
+# ============================================
+# STOCKAGE GOOGLE SHEETS (méthode principale)
+# ============================================
+
+def get_gsheet_script_url():
+    """Récupère l'URL du script Google Sheets depuis les Secrets"""
+    try:
+        if hasattr(st, 'secrets') and 'GOOGLE_SCRIPT_URL' in st.secrets:
+            url = st.secrets['GOOGLE_SCRIPT_URL']
+            if url and url.startswith('https://script.google.com/'):
+                return url
+    except:
+        pass
+    return None
+
+def save_to_gsheet():
+    """Sauvegarde les données dans Google Sheets via Apps Script"""
+    script_url = get_gsheet_script_url()
+    if not script_url:
+        return False, "GOOGLE_SCRIPT_URL non configuré"
+    
+    try:
+        data_to_save = {
+            'players': list(st.session_state.players) if st.session_state.players else [],
+            'data': dict(st.session_state.data) if st.session_state.data else {},
+            'injuries': list(st.session_state.injuries) if st.session_state.injuries else [],
+            'settings': {k: v for k, v in st.session_state.settings.items() 
+                        if not k.startswith('cloud_') and isinstance(v, (str, int, float, bool, list, dict, type(None)))},
+            'saved_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+            'app_version': 'v17'
+        }
+        
+        json_data = json.dumps(data_to_save, ensure_ascii=False, default=str)
+        
+        # Envoyer au script Google
+        response = requests.post(
+            script_url,
+            data=json_data,
+            headers={'Content-Type': 'application/json'},
+            timeout=120
+        )
+        
+        if response.status_code == 200:
+            try:
+                result = response.json()
+                if result.get('success'):
+                    st.session_state.last_cloud_save = datetime.now()
+                    return True, "✅ Sauvegardé dans Google Sheets"
+                else:
+                    return False, f"Erreur: {result.get('error', 'inconnue')}"
+            except:
+                # Parfois Google renvoie du texte, pas du JSON
+                if 'success' in response.text.lower():
+                    st.session_state.last_cloud_save = datetime.now()
+                    return True, "✅ Sauvegardé dans Google Sheets"
+                return False, f"Réponse inattendue: {response.text[:100]}"
+        else:
+            return False, f"Erreur HTTP: {response.status_code}"
+            
+    except requests.exceptions.Timeout:
+        return False, "Timeout - réessayez"
+    except Exception as e:
+        return False, f"Erreur: {str(e)}"
+
+def load_from_gsheet():
+    """Charge les données depuis Google Sheets via Apps Script"""
+    script_url = get_gsheet_script_url()
+    if not script_url:
+        return False, "GOOGLE_SCRIPT_URL non configuré"
+    
+    try:
+        response = requests.get(script_url, timeout=60)
+        
+        if response.status_code == 200:
+            try:
+                loaded = response.json()
+                
+                # Vérifier que c'est bien des données valides
+                if 'players' in loaded or 'data' in loaded:
+                    st.session_state.players = loaded.get('players', [])
+                    st.session_state.data = loaded.get('data', {})
+                    st.session_state.injuries = loaded.get('injuries', [])
+                    if 'settings' in loaded:
+                        for k, v in loaded['settings'].items():
+                            if not k.startswith('cloud_'):
+                                st.session_state.settings[k] = v
+                    
+                    return True, f"✅ Chargé ({len(st.session_state.players)} joueurs, {len(st.session_state.data)} jours)"
+                else:
+                    return False, "Données vides ou invalides"
+            except json.JSONDecodeError:
+                return False, "Données corrompues dans le Sheet"
+        else:
+            return False, f"Erreur HTTP: {response.status_code}"
+            
+    except requests.exceptions.Timeout:
+        return False, "Timeout"
+    except Exception as e:
+        return False, f"Erreur: {str(e)}"
+
+def is_gsheet_configured():
+    """Vérifie si Google Sheets est configuré"""
+    return get_gsheet_script_url() is not None
+
+# ============================================
+# FONCTIONS DE STOCKAGE UNIFIÉES
+# ============================================
+
+def cloud_save():
+    """Sauvegarde unifiée - Priorité Google Sheets, fallback JSONBlob"""
+    # Priorité 1: Google Sheets
+    if is_gsheet_configured():
+        return save_to_gsheet()
+    
+    # Priorité 2: JSONBlob (legacy)
+    return save_to_cloud()
+
+def cloud_load():
+    """Chargement unifié - Priorité Google Sheets, fallback JSONBlob"""
+    # Priorité 1: Google Sheets
+    if is_gsheet_configured():
+        return load_from_gsheet()
+    
+    # Priorité 2: JSONBlob (legacy)
+    return load_from_cloud()
+
+def get_storage_status():
+    """Retourne le type de stockage actif"""
+    if is_gsheet_configured():
+        return "gsheet", "Google Sheets"
+    elif get_cloud_id():
+        return "jsonblob", "JSONBlob (legacy)"
+    else:
+        return None, "Non configuré"
+
 def get_backup_reminder():
     """Vérifie si un rappel de backup est nécessaire"""
     if 'last_save_time' not in st.session_state:
@@ -701,7 +866,7 @@ if 'data_loaded' not in st.session_state:
     st.session_state.data_loaded = True
     st.session_state.last_save_time = datetime.now()
     
-    # 1. Charger l'ID cloud depuis les Secrets Streamlit (priorité)
+    # 1. Charger l'ID JSONBlob depuis les Secrets Streamlit (legacy)
     try:
         if hasattr(st, 'secrets') and 'CLOUD_BLOB_ID' in st.secrets:
             st.session_state.settings['cloud_blob_id'] = st.secrets['CLOUD_BLOB_ID']
@@ -718,7 +883,7 @@ if 'data_loaded' not in st.session_state:
         except:
             pass
     
-    # 3. Charger les données locales pour comparaison
+    # 3. Charger les données locales d'abord (pour comparaison)
     local_data_count = 0
     if os.path.exists(DATA_FILE):
         try:
@@ -735,9 +900,32 @@ if 'data_loaded' not in st.session_state:
         except:
             pass
     
-    # 4. Si on a un ID cloud, charger depuis le cloud et comparer
-    cloud_blob_id = get_cloud_id()
-    if cloud_blob_id:
+    # 4. PRIORITÉ 1: Google Sheets (si configuré)
+    if is_gsheet_configured():
+        try:
+            script_url = get_gsheet_script_url()
+            response = requests.get(script_url, timeout=30)
+            if response.status_code == 200:
+                cloud_data = response.json()
+                cloud_data_count = len(cloud_data.get('data', {}))
+                
+                # Si Google Sheets a des données, les utiliser
+                if cloud_data_count > 0 and cloud_data_count >= local_data_count:
+                    st.session_state.players = cloud_data.get('players', [])
+                    st.session_state.data = cloud_data.get('data', {})
+                    st.session_state.injuries = cloud_data.get('injuries', [])
+                    if 'settings' in cloud_data:
+                        for k, v in cloud_data['settings'].items():
+                            if not k.startswith('cloud_'):
+                                st.session_state.settings[k] = v
+                    st.session_state.cloud_loaded = True
+                    st.session_state.storage_source = "gsheet"
+        except:
+            pass
+    
+    # 5. PRIORITÉ 2: JSONBlob (legacy, si Google Sheets pas configuré)
+    elif get_cloud_id():
+        cloud_blob_id = get_cloud_id()
         try:
             url = f"https://jsonblob.com/api/jsonBlob/{cloud_blob_id}"
             response = requests.get(url, headers={'Accept': 'application/json'}, timeout=15)
@@ -745,7 +933,7 @@ if 'data_loaded' not in st.session_state:
                 cloud_data = response.json()
                 cloud_data_count = len(cloud_data.get('data', {}))
                 
-                # Si le cloud a plus de données OU autant, utiliser le cloud (plus récent)
+                # Si le cloud a plus de données OU autant, utiliser le cloud
                 if cloud_data_count >= local_data_count:
                     st.session_state.players = cloud_data.get('players', [])
                     st.session_state.data = cloud_data.get('data', {})
@@ -755,6 +943,7 @@ if 'data_loaded' not in st.session_state:
                             if not k.startswith('cloud_'):
                                 st.session_state.settings[k] = v
                     st.session_state.cloud_loaded = True
+                    st.session_state.storage_source = "jsonblob"
         except:
             pass
 
@@ -3024,40 +3213,59 @@ def page_import():
     # ============================================
     # SECTION CLOUD : Synchronisation
     # ============================================
-    cloud_connected, cloud_id = get_cloud_status()
+    storage_type, storage_name = get_storage_status()
+    is_connected = storage_type is not None
+    
+    # Couleur selon le type de stockage
+    if storage_type == "gsheet":
+        storage_color = "#10b981"  # Vert
+        storage_icon = "📊"
+        storage_label = "Google Sheets"
+    elif storage_type == "jsonblob":
+        storage_color = "#f59e0b"  # Orange (legacy)
+        storage_icon = "☁️"
+        storage_label = "JSONBlob (legacy)"
+    else:
+        storage_color = "#64748b"
+        storage_icon = "○"
+        storage_label = "Non configuré"
     
     st.markdown(f"""
     <div class="premium-card" style="border:1px solid rgba(16,185,129,0.3);">
         <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px;">
-            <h3 style="color:white;margin:0;">☁️ Cloud</h3>
-            <span style="color:{'#10b981' if cloud_connected else '#64748b'};font-size:12px;">
-                {'✅ Connecté' if cloud_connected else '○ Non connecté'}
+            <h3 style="color:white;margin:0;">☁️ Stockage</h3>
+            <span style="color:{storage_color};font-size:12px;">
+                {storage_icon} {storage_label}
             </span>
         </div>
     """, unsafe_allow_html=True)
     
     col_sync1, col_sync2 = st.columns(2)
     with col_sync1:
-        if st.button("☁️ Synchroniser", type="primary" if not cloud_connected else "secondary", use_container_width=True):
+        if st.button("☁️ Synchroniser", type="primary" if not is_connected else "secondary", use_container_width=True):
             with st.spinner("Synchronisation..."):
-                success, msg = save_to_cloud()
+                success, msg = cloud_save()
                 if success:
-                    st.success(f"✅ {msg}")
+                    st.success(msg)
                 else:
                     st.error(f"❌ {msg}")
     
     with col_sync2:
-        if st.button("📥 Recharger", use_container_width=True, disabled=not cloud_connected):
+        if st.button("📥 Recharger", use_container_width=True, disabled=not is_connected):
             with st.spinner("Chargement..."):
-                success, msg = load_from_cloud()
+                success, msg = cloud_load()
                 if success:
-                    st.success(f"✅ {msg}")
+                    st.success(msg)
                     st.rerun()
                 else:
                     st.error(f"❌ {msg}")
     
     if 'last_cloud_save' in st.session_state:
         st.caption(f"⏱️ Dernière synchro : {st.session_state.last_cloud_save.strftime('%d/%m/%Y %H:%M')}")
+    
+    # Message d'aide si pas configuré
+    if not is_connected:
+        st.info("💡 Configurez GOOGLE_SCRIPT_URL dans les Secrets Streamlit pour activer la sauvegarde automatique.")
     
     st.markdown("</div>", unsafe_allow_html=True)
     
@@ -3882,87 +4090,131 @@ def page_parametres():
     
     st.markdown("<div style='height:32px'></div>", unsafe_allow_html=True)
     
-    # === STOCKAGE CLOUD AUTOMATIQUE ===
-    st.markdown("### ☁️ Stockage Cloud Automatique")
+    # === STOCKAGE CLOUD ===
+    st.markdown("### ☁️ Stockage Cloud")
     
     # Vérifier le statut
+    storage_type, storage_name = get_storage_status()
     cloud_connected, cloud_id = get_cloud_status()
-    is_in_secrets = is_cloud_id_in_secrets()
+    is_gsheet = is_gsheet_configured()
     
-    if cloud_connected and is_in_secrets:
-        # Configuration parfaite !
+    if is_gsheet:
+        # Configuration parfaite avec Google Sheets !
         st.markdown(f"""
         <div style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:12px;padding:16px;margin-bottom:16px;">
             <div style="display:flex;align-items:center;gap:12px;">
-                <span style="font-size:28px;">✅</span>
+                <span style="font-size:28px;">📊</span>
                 <div style="flex:1;">
-                    <div style="color:#10b981;font-weight:600;font-size:16px;">Cloud configuré parfaitement !</div>
+                    <div style="color:#10b981;font-weight:600;font-size:16px;">Google Sheets configuré ✅</div>
                     <div style="color:#94a3b8;font-size:12px;margin-top:4px;">
-                        Vos données survivront à tous les redémarrages, vacances, etc.
+                        Vos données sont sauvegardées dans Google Sheets. Fiable et permanent !
                     </div>
                 </div>
             </div>
         </div>
         """, unsafe_allow_html=True)
         
-    elif cloud_connected and not is_in_secrets:
-        # Cloud actif mais pas dans les Secrets - IMPORTANT !
+    elif cloud_connected:
+        # JSONBlob actif - encourager migration vers Google Sheets
         st.markdown(f"""
         <div style="background:rgba(245,158,11,0.15);border:2px solid rgba(245,158,11,0.5);border-radius:12px;padding:16px;margin-bottom:16px;">
             <div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
                 <span style="font-size:28px;">⚠️</span>
                 <div style="flex:1;">
-                    <div style="color:#f59e0b;font-weight:600;font-size:16px;">Action requise pour sécuriser vos données !</div>
+                    <div style="color:#f59e0b;font-weight:600;font-size:16px;">JSONBlob actif (méthode ancienne)</div>
                     <div style="color:#94a3b8;font-size:12px;margin-top:4px;">
-                        Copiez l'ID ci-dessous dans les Secrets Streamlit pour que les données survivent aux redémarrages.
+                        JSONBlob peut perdre vos données. Migrez vers Google Sheets pour plus de fiabilité.
                     </div>
                 </div>
             </div>
         </div>
         """, unsafe_allow_html=True)
         
-        # Afficher l'ID à copier
-        st.markdown("#### 📋 Votre ID Cloud (à copier) :")
-        st.code(cloud_id, language=None)
-        
-        with st.expander("🔧 Instructions de configuration (2 minutes)", expanded=True):
-            st.markdown(f"""
-            ### Étapes pour sécuriser vos données :
-            
-            **1.** Allez sur **[share.streamlit.io](https://share.streamlit.io)**
-            
-            **2.** Trouvez votre app **wellness-tracker-rugby** → cliquez sur **⋮** (3 points) → **Settings**
-            
-            **3.** Cliquez sur **Secrets** dans le menu à gauche
-            
-            **4.** Collez ce texte exactement :
-            ```toml
-            CLOUD_BLOB_ID = "{cloud_id}"
-            ```
-            
-            **5.** Cliquez **Save**
-            
-            **6.** L'app va redémarrer automatiquement → vos données seront sécurisées ! ✅
-            
-            ---
-            ⚠️ **Sans cette configuration**, si Streamlit redémarre (maintenance, vacances, etc.), 
-            l'app ne saura plus où trouver vos données !
-            """)
     else:
-        # Pas encore de cloud
+        # Pas configuré
         st.markdown("""
         <div style="background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.3);border-radius:12px;padding:16px;margin-bottom:16px;">
             <div style="display:flex;align-items:center;gap:12px;">
                 <span style="font-size:28px;">☁️</span>
                 <div>
-                    <div style="color:#3b82f6;font-weight:600;font-size:16px;">Cloud prêt à être activé</div>
+                    <div style="color:#3b82f6;font-weight:600;font-size:16px;">Stockage non configuré</div>
                     <div style="color:#94a3b8;font-size:12px;margin-top:4px;">
-                        Cliquez sur "Synchroniser" pour créer votre espace cloud.
+                        Configurez Google Sheets pour sauvegarder vos données de façon permanente.
                     </div>
                 </div>
             </div>
         </div>
         """, unsafe_allow_html=True)
+    
+    # Instructions Google Sheets
+    with st.expander("📋 Configurer Google Sheets (recommandé)", expanded=not is_gsheet):
+        st.markdown("""
+        ### Configuration en 3 étapes (10 minutes)
+        
+        #### Étape 1 : Créer le script Google
+        
+        1. Ouvrez votre **Google Sheet** (celui que vous utilisez pour l'import)
+        2. Menu **Extensions** → **Apps Script**
+        3. Effacez tout le code existant et collez ceci :
+        """)
+        
+        script_code = '''function doGet(e) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("APP_DATA");
+  if (!sheet) {
+    return ContentService.createTextOutput(JSON.stringify({error: "Onglet APP_DATA non trouvé"}))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  var data = sheet.getRange("A1").getValue();
+  if (!data) {
+    return ContentService.createTextOutput(JSON.stringify({}))
+      .setMimeType(ContentService.MimeType.JSON);
+  }
+  
+  return ContentService.createTextOutput(data).setMimeType(ContentService.MimeType.JSON);
+}
+
+function doPost(e) {
+  var sheet = SpreadsheetApp.getActiveSpreadsheet().getSheetByName("APP_DATA");
+  if (!sheet) {
+    sheet = SpreadsheetApp.getActiveSpreadsheet().insertSheet("APP_DATA");
+  }
+  
+  var data = e.postData.contents;
+  sheet.getRange("A1").setValue(data);
+  sheet.getRange("B1").setValue(new Date().toISOString());
+  
+  return ContentService.createTextOutput(JSON.stringify({success: true}))
+    .setMimeType(ContentService.MimeType.JSON);
+}'''
+        
+        st.code(script_code, language="javascript")
+        
+        st.markdown("""
+        #### Étape 2 : Déployer le script
+        
+        1. Cliquez sur **Déployer** → **Nouveau déploiement**
+        2. Type : **Application Web**
+        3. Exécuter en tant que : **Moi**
+        4. Accès : **Tout le monde**
+        5. Cliquez **Déployer**
+        6. **Copiez l'URL** qui s'affiche (elle commence par `https://script.google.com/...`)
+        
+        #### Étape 3 : Configurer Streamlit
+        
+        1. Allez sur **[share.streamlit.io](https://share.streamlit.io)**
+        2. Trouvez votre app → **⋮** → **Settings** → **Secrets**
+        3. Ajoutez cette ligne :
+        """)
+        
+        st.code('GOOGLE_SCRIPT_URL = "https://script.google.com/macros/s/VOTRE_ID/exec"', language="toml")
+        
+        st.markdown("""
+        4. Cliquez **Save** → L'app redémarre automatiquement ✅
+        
+        ---
+        **C'est fait !** Vos données seront sauvegardées dans Google Sheets de façon permanente.
+        """)
     
     # Dernière synchro
     if 'last_cloud_save' in st.session_state:
@@ -3980,7 +4232,7 @@ def page_parametres():
     with col1:
         if st.button("☁️ Synchroniser maintenant", use_container_width=True, type="primary"):
             with st.spinner("Synchronisation..."):
-                success, msg = save_to_cloud()
+                success, msg = cloud_save()
                 if success:
                     st.success(f"✅ {msg}")
                     # Si nouveau cloud créé, forcer le rerun pour afficher les instructions
@@ -3990,9 +4242,10 @@ def page_parametres():
                     st.error(f"❌ {msg}")
     
     with col2:
-        if st.button("📥 Forcer chargement cloud", use_container_width=True, disabled=not cloud_connected):
+        is_storage_configured = is_gsheet or cloud_connected
+        if st.button("📥 Forcer chargement cloud", use_container_width=True, disabled=not is_storage_configured):
             with st.spinner("Chargement..."):
-                success, msg = load_from_cloud()
+                success, msg = cloud_load()
                 if success:
                     st.success(f"✅ {msg}")
                     st.rerun()
@@ -4003,10 +4256,9 @@ def page_parametres():
     <div style="background:rgba(255,255,255,0.03);border-radius:8px;padding:12px;margin-top:16px;">
         <div style="color:#64748b;font-size:12px;">
             <strong style="color:#94a3b8;">ℹ️ Comment ça marche ?</strong><br>
-            • Les données sont sauvegardées dans le cloud quand vous cliquez "Synchroniser"<br>
+            • Les données sont sauvegardées automatiquement dans Google Sheets<br>
             • Au démarrage, l'app charge automatiquement depuis le cloud<br>
-            • Gratuit, illimité, pas de pause !<br>
-            • <strong style="color:#f59e0b;">Important :</strong> Configurez les Secrets Streamlit pour que ça survive aux redémarrages
+            • Gratuit, illimité, vos données vous appartiennent !
         </div>
     </div>
     """, unsafe_allow_html=True)
@@ -4138,12 +4390,13 @@ def main():
         
         st.markdown("<div style='height:16px'></div>", unsafe_allow_html=True)
         
-        # Indicateur de statut cloud (automatique)
-        cloud_connected, cloud_id = get_cloud_status()
-        is_in_secrets = is_cloud_id_in_secrets()
+        # Indicateur de statut stockage
+        storage_type, storage_name = get_storage_status()
+        is_gsheet = is_gsheet_configured()
+        cloud_connected, _ = get_cloud_status()
         
-        if cloud_connected and is_in_secrets:
-            # Parfait !
+        if is_gsheet:
+            # Google Sheets configuré - parfait !
             if 'last_cloud_save' in st.session_state:
                 time_diff = datetime.now() - st.session_state.last_cloud_save
                 if time_diff.total_seconds() < 60:
@@ -4155,37 +4408,41 @@ def main():
                 
                 st.markdown(f"""
                 <div style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:8px;padding:10px;text-align:center;">
-                    <div style="font-size:11px;color:#10b981;">✅ Cloud sécurisé {sync_text}</div>
+                    <div style="font-size:11px;color:#10b981;">📊 Google Sheets ✅</div>
+                    <div style="font-size:9px;color:#64748b;">Sync {sync_text}</div>
                 </div>
                 """, unsafe_allow_html=True)
             else:
                 st.markdown("""
                 <div style="background:rgba(16,185,129,0.1);border:1px solid rgba(16,185,129,0.3);border-radius:8px;padding:10px;text-align:center;">
-                    <div style="font-size:11px;color:#10b981;">✅ Cloud sécurisé</div>
+                    <div style="font-size:11px;color:#10b981;">📊 Google Sheets ✅</div>
                 </div>
                 """, unsafe_allow_html=True)
                 
-        elif cloud_connected and not is_in_secrets:
-            # Cloud actif mais pas sécurisé
+        elif cloud_connected:
+            # JSONBlob (legacy)
             st.markdown("""
             <div style="background:rgba(245,158,11,0.15);border:1px solid rgba(245,158,11,0.4);border-radius:8px;padding:10px;text-align:center;">
-                <div style="font-size:11px;color:#f59e0b;">⚠️ Config requise</div>
-                <div style="font-size:9px;color:#94a3b8;">Voir Paramètres</div>
+                <div style="font-size:11px;color:#f59e0b;">☁️ JSONBlob (legacy)</div>
+                <div style="font-size:9px;color:#94a3b8;">Migrez vers Google Sheets</div>
             </div>
             """, unsafe_allow_html=True)
         else:
-            # Pas encore de cloud
+            # Pas configuré
             st.markdown("""
             <div style="background:rgba(59,130,246,0.1);border:1px solid rgba(59,130,246,0.3);border-radius:8px;padding:10px;text-align:center;">
-                <div style="font-size:11px;color:#3b82f6;">☁️ Cliquez Synchroniser</div>
+                <div style="font-size:11px;color:#3b82f6;">☁️ Non configuré</div>
+                <div style="font-size:9px;color:#94a3b8;">Voir Paramètres</div>
             </div>
             """, unsafe_allow_html=True)
         
         # Indicateur si chargé depuis le cloud
         if st.session_state.get('cloud_loaded'):
-            st.markdown("""
+            source = st.session_state.get('storage_source', 'cloud')
+            source_label = "Google Sheets" if source == "gsheet" else "cloud"
+            st.markdown(f"""
             <div style="font-size:9px;color:#64748b;text-align:center;margin-top:4px;">
-                📥 Chargé depuis le cloud
+                📥 Chargé depuis {source_label}
             </div>
             """, unsafe_allow_html=True)
         
@@ -4193,7 +4450,7 @@ def main():
         
         # Bouton synchro cloud
         if st.button("☁️ Synchroniser", use_container_width=True, help="Sauvegarder dans le cloud"):
-            success, msg = save_to_cloud()
+            success, msg = cloud_save()
             if success:
                 st.success("✅ Synchronisé !")
             else:
