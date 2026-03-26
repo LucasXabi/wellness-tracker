@@ -619,7 +619,7 @@ def save_to_cloud():
                     
                     if response.status_code == 200:
                         st.session_state.last_cloud_save = datetime.now()
-                        return True, "☁️ Synchronisé"
+                        return True, "✅ Sauvegardé"
                     elif response.status_code == 404:
                         # SÉCURITÉ : Si l'ID vient des Secrets, NE JAMAIS créer de nouveau blob
                         if id_from_secrets:
@@ -663,10 +663,10 @@ def save_to_cloud():
                     save_cloud_id(new_blob_id)
                     st.session_state.last_cloud_save = datetime.now()
                     st.session_state.new_cloud_id_created = new_blob_id
-                    return True, "☁️ Cloud créé - Ajoutez l'ID aux Secrets!"
+                    return True, "✅ Cloud créé - Ajoutez l'ID aux Secrets!"
             return False, f"Erreur création: {response.status_code}"
         
-        return True, "☁️ Synchronisé"
+        return True, "✅ Sauvegardé"
         
     except requests.exceptions.Timeout:
         return False, "Timeout - réessayez"
@@ -4301,17 +4301,16 @@ function doPost(e) {
             sync_text = f"il y a {int(time_diff.total_seconds() / 60)} min"
         else:
             sync_text = st.session_state.last_cloud_save.strftime("%d/%m %H:%M")
-        st.caption(f"⏱️ Dernière synchronisation : {sync_text}")
+        st.caption(f"⏱️ Dernière sauvegarde : {sync_text}")
     
     # Boutons
     col1, col2 = st.columns(2)
     with col1:
-        if st.button("☁️ Synchroniser maintenant", use_container_width=True, type="primary"):
-            with st.spinner("Synchronisation..."):
+        if st.button("💾 Sauvegarder maintenant", use_container_width=True, type="primary"):
+            with st.spinner("Sauvegarde..."):
                 success, msg = cloud_save()
                 if success:
                     st.success(f"✅ {msg}")
-                    # Si nouveau cloud créé, forcer le rerun pour afficher les instructions
                     if st.session_state.get('new_cloud_id_created'):
                         st.rerun()
                 else:
@@ -4319,7 +4318,7 @@ function doPost(e) {
     
     with col2:
         is_storage_configured = is_gsheet or cloud_connected
-        if st.button("📥 Forcer chargement cloud", use_container_width=True, disabled=not is_storage_configured):
+        if st.button("📥 Recharger depuis cloud", use_container_width=True, disabled=not is_storage_configured):
             with st.spinner("Chargement..."):
                 success, msg = cloud_load()
                 if success:
@@ -4649,13 +4648,14 @@ def main():
         
         st.markdown("<div style='height:8px'></div>", unsafe_allow_html=True)
         
-        # Bouton synchro cloud
-        if st.button("☁️ Synchroniser", use_container_width=True, help="Sauvegarder dans le cloud"):
-            success, msg = cloud_save()
-            if success:
-                st.success("✅ Synchronisé !")
-            else:
-                st.error(msg)
+        # Bouton Sauvegarder
+        if st.button("💾 Sauvegarder", use_container_width=True, help="Sauvegarder dans Google Sheets"):
+            with st.spinner("Sauvegarde..."):
+                success, msg = cloud_save()
+                if success:
+                    st.success("✅ Sauvegardé !")
+                else:
+                    st.error(msg)
     
     # Navigation
     pages = {
