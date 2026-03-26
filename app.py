@@ -748,33 +748,52 @@ def save_to_gsheet():
             'settings': {k: v for k, v in st.session_state.settings.items() 
                         if not k.startswith('cloud_') and isinstance(v, (str, int, float, bool, list, dict, type(None)))},
             'saved_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-            'app_version': 'v17'
+            'app_version': 'v18'
         }
         
         json_data = json.dumps(data_to_save, ensure_ascii=False, default=str)
         
-        # Envoyer au script Google
-        response = requests.post(
+        # Google Apps Script redirige les POST - on doit suivre manuellement
+        session = requests.Session()
+        
+        # Premier POST (va probablement rediriger)
+        response = session.post(
             script_url,
-            data=json_data,
+            data=json_data.encode('utf-8'),
             headers={'Content-Type': 'application/json'},
-            timeout=120
+            timeout=120,
+            allow_redirects=False  # Ne pas suivre automatiquement
         )
         
+        # Si redirection, suivre avec GET (Google convertit POST->GET après redirect)
+        if response.status_code in [301, 302, 303, 307, 308]:
+            redirect_url = response.headers.get('Location')
+            if redirect_url:
+                # Pour Google Apps Script, après la redirection on fait un GET
+                # mais les données ont déjà été traitées par le premier POST
+                response = session.get(redirect_url, timeout=30)
+        
         if response.status_code == 200:
+            response_text = response.text.strip()
+            
+            # Vérifier si c'est une réponse de succès
             try:
                 result = response.json()
                 if result.get('success'):
                     st.session_state.last_cloud_save = datetime.now()
                     return True, "✅ Sauvegardé dans Google Sheets"
-                else:
-                    return False, f"Erreur: {result.get('error', 'inconnue')}"
-            except:
-                # Parfois Google renvoie du texte, pas du JSON
-                if 'success' in response.text.lower():
-                    st.session_state.last_cloud_save = datetime.now()
-                    return True, "✅ Sauvegardé dans Google Sheets"
-                return False, f"Réponse inattendue: {response.text[:100]}"
+                elif 'error' in result:
+                    return False, f"Erreur: {result.get('error')}"
+            except json.JSONDecodeError:
+                pass
+            
+            # Parfois Google renvoie juste du texte
+            if 'success' in response_text.lower():
+                st.session_state.last_cloud_save = datetime.now()
+                return True, "✅ Sauvegardé dans Google Sheets"
+            
+            # Si on arrive ici, la réponse est inattendue
+            return False, f"Réponse inattendue: {response_text[:100]}"
         else:
             return False, f"Erreur HTTP: {response.status_code}"
             
@@ -4310,30 +4329,100 @@ function doPost(e) {
         if script_url:
             st.code(f"URL: {script_url[:50]}...{script_url[-20:]}" if len(script_url) > 70 else f"URL: {script_url}")
             
-            if st.button("🧪 Tester la connexion", key="test_gsheet"):
-                with st.spinner("Test en cours..."):
+            col_test1, col_test2 = st.columns(2)
+            
+            with col_test1:
+                if st.button("🧪 Tester LECTURE (GET)", key="test_gsheet_get"):
+                    with st.spinner("Test lecture..."):
+                        try:
+                            session = requests.Session()
+                            response = session.get(script_url, timeout=30, allow_redirects=True)
+                            
+                            st.write(f"**Status:** {response.status_code}")
+                            response_text = response.text[:300]
+                            st.code(response_text)
+                            
+                            if response_text.startswith('<!'):
+                                st.error("❌ Page HTML - script mal déployé")
+                            else:
+                                try:
+                                    data = response.json()
+                                    st.success(f"✅ {len(data.get('players', []))} joueurs, {len(data.get('data', {}))} jours")
+                                except:
+                                    st.warning("⚠️ Réponse vide ou non-JSON")
+                        except Exception as e:
+                            st.error(f"❌ {str(e)}")
+            
+            with col_test2:
+                if st.button("🧪 Tester ÉCRITURE (POST)", key="test_gsheet_post"):
+                    with st.spinner("Test écriture..."):
+                        try:
+                            # Envoyer un petit test
+                            test_data = json.dumps({"test": True, "time": datetime.now().strftime('%H:%M:%S')})
+                            
+                            response = requests.post(
+                                script_url,
+                                data=test_data,
+                                headers={'Content-Type': 'application/json'},
+                                timeout=30
+                            )
+                            
+                            st.write(f"**Status:** {response.status_code}")
+                            st.write(f"**Réponse:**")
+                            st.code(response.text[:500])
+                            
+                            if response.status_code == 200:
+                                if 'success' in response.text.lower() or '"success":true' in response.text.lower():
+                                    st.success("✅ Écriture OK ! Vérifiez l'onglet APP_DATA")
+                                else:
+                                    st.warning("⚠️ Réponse inattendue")
+                            elif response.status_code == 302:
+                                st.error("❌ Redirection 302 - Le script ne gère pas bien les POST")
+                                st.info("💡 Essayez de re-déployer le script avec une NOUVELLE version")
+                            else:
+                                st.error(f"❌ Erreur HTTP {response.status_code}")
+                        except Exception as e:
+                            st.error(f"❌ {str(e)}")
+            
+            st.markdown("---")
+            
+            # Bouton pour forcer la sauvegarde avec debug
+            if st.button("💾 Forcer sauvegarde avec détails", key="force_save_debug"):
+                with st.spinner("Sauvegarde..."):
                     try:
-                        session = requests.Session()
-                        response = session.get(script_url, timeout=30, allow_redirects=True)
+                        data_to_save = {
+                            'players': list(st.session_state.players) if st.session_state.players else [],
+                            'data': dict(st.session_state.data) if st.session_state.data else {},
+                            'injuries': list(st.session_state.injuries) if st.session_state.injuries else [],
+                            'saved_at': datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                            'app_version': 'v18'
+                        }
+                        
+                        json_data = json.dumps(data_to_save, ensure_ascii=False, default=str)
+                        st.write(f"**Taille des données:** {len(json_data)} caractères")
+                        st.write(f"**Joueurs:** {len(data_to_save['players'])}, **Jours:** {len(data_to_save['data'])}")
+                        
+                        response = requests.post(
+                            script_url,
+                            data=json_data.encode('utf-8'),
+                            headers={'Content-Type': 'application/json'},
+                            timeout=120
+                        )
                         
                         st.write(f"**Status HTTP:** {response.status_code}")
-                        st.write(f"**Content-Type:** {response.headers.get('Content-Type', 'N/A')}")
+                        st.write(f"**Headers:** {dict(response.headers)}")
+                        st.write(f"**Réponse:**")
+                        st.code(response.text[:1000])
                         
-                        response_text = response.text[:500]
-                        st.write(f"**Réponse (500 premiers caractères):**")
-                        st.code(response_text)
-                        
-                        if response_text.startswith('<!') or response_text.startswith('<html'):
-                            st.error("❌ Google renvoie une page HTML. Le script n'est pas bien déployé.")
-                            st.info("💡 Vérifiez que le déploiement est en 'Application Web' avec accès 'Tout le monde'.")
+                        if response.status_code == 200 and 'success' in response.text.lower():
+                            st.success("✅ Sauvegarde réussie !")
                         else:
-                            try:
-                                data = response.json()
-                                st.success(f"✅ JSON valide ! {len(data.get('players', []))} joueurs, {len(data.get('data', {}))} jours")
-                            except:
-                                st.warning("⚠️ Réponse non-JSON. Peut-être vide (normal si première utilisation).")
+                            st.error("❌ Échec de la sauvegarde")
+                            
                     except Exception as e:
                         st.error(f"❌ Erreur: {str(e)}")
+                        import traceback
+                        st.code(traceback.format_exc())
         else:
             st.warning("GOOGLE_SCRIPT_URL non configuré dans les Secrets")
         
