@@ -378,9 +378,9 @@ st.markdown("""
 METRICS = [
     {'key': 'sleep', 'label': 'Sommeil', 'icon': '😴', 'color': '#3b82f6'},
     {'key': 'mentalLoad', 'label': 'Charge Mentale', 'icon': '🧠', 'color': '#8b5cf6'},
-    {'key': 'motivation', 'label': 'Motivation', 'icon': '💪', 'color': '#f59e0b'},
-    {'key': 'hdcState', 'label': 'HDC', 'icon': '❤️', 'color': '#ef4444'},
-    {'key': 'bdcState', 'label': 'BDC', 'icon': '💚', 'color': '#10b981'},
+    {'key': 'motivation', 'label': 'Motivation', 'icon': '🌞', 'color': '#f59e0b'},
+    {'key': 'hdcState', 'label': 'HDC', 'icon': '💪', 'color': '#ef4444'},
+    {'key': 'bdcState', 'label': 'BDC', 'icon': '🦵', 'color': '#10b981'},
 ]
 
 RUGBY_POSITIONS = {
@@ -3086,9 +3086,9 @@ def page_dashboard():
             <span style="text-align:center;">Poids</span>
             <span style="text-align:center;">😴</span>
             <span style="text-align:center;">🧠</span>
+            <span style="text-align:center;">🌞</span>
             <span style="text-align:center;">💪</span>
-            <span style="text-align:center;">❤️</span>
-            <span style="text-align:center;">💚</span>
+            <span style="text-align:center;">🦵</span>
             <span style="text-align:center;">Moy.</span>
             <span style="text-align:center;">Δ</span>
             <span>💬 Remarque</span>
@@ -3624,9 +3624,9 @@ def page_effectif():
             <span style="text-align:center;">Statut</span>
             <span style="text-align:center;">😴</span>
             <span style="text-align:center;">🧠</span>
+            <span style="text-align:center;">🌞</span>
             <span style="text-align:center;">💪</span>
-            <span style="text-align:center;">❤️</span>
-            <span style="text-align:center;">💚</span>
+            <span style="text-align:center;">🦵</span>
             <span>💬 Remarque</span>
         </div>
         """, unsafe_allow_html=True)
