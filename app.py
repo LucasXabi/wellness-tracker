@@ -3123,7 +3123,6 @@ def page_dashboard():
             
             # Remarque
             remark_full = row['remark'] if row['remark'] else ""
-            remark_truncated = remark_full[:30] + "…" if len(remark_full) > 30 else remark_full
             has_remark = bool(remark_full)
             remark_bg = "background:rgba(99,102,241,0.12);padding:3px 8px;border-radius:5px;" if has_remark else ""
             
@@ -3133,7 +3132,7 @@ def page_dashboard():
             with col_main:
                 st.markdown(f"""
                 <div class="player-row {'has-alert' if row['has_issue'] else ''}" style="padding:10px 16px;">
-                    <div style="display:grid;grid-template-columns:190px 65px 55px repeat(5, 38px) 45px 42px 1fr;gap:6px;align-items:center;">
+                    <div style="display:grid;grid-template-columns:190px 65px 55px repeat(5, 38px) 45px 42px minmax(0,1fr);gap:6px;align-items:center;">
                         <div style="display:flex;align-items:center;gap:10px;">
                             <div class="player-avatar {avatar_class}" style="width:36px;height:36px;font-size:15px;">{row['name'][0]}</div>
                             <div>
@@ -3146,7 +3145,7 @@ def page_dashboard():
                         {metrics_html}
                         <span style="display:inline-flex;align-items:center;justify-content:center;width:38px;height:34px;border-radius:8px;background:{avg_color};color:white;font-weight:600;font-size:12px;">{avg_str}</span>
                         <span style="text-align:center;min-width:40px;">{diff_str}</span>
-                        <div style="{remark_bg}color:#cbd5e1;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="{remark_full}">{remark_truncated if has_remark else '—'}</div>
+                        <div style="{remark_bg}color:#cbd5e1;font-size:10px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0;" title="{remark_full}">{remark_full if has_remark else '—'}</div>
                     </div>
                 </div>
                 """, unsafe_allow_html=True)
